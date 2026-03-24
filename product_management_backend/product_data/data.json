@@ -1,0 +1,23 @@
+[
+  {
+    "id": "4225b19b-5b8f-4b13-ad8a-74c0e35c1069",
+    "name": "mango",
+    "price": "122",
+    "category": "fruit",
+    "quantity": "12"
+  },
+  {
+    "id": "de948588-1e27-43b5-abfe-99e3fce572eb",
+    "name": "Sunny Prabhakar",
+    "price": "12",
+    "category": "fruit",
+    "quantity": "12"
+  },
+  {
+    "id": "f6baf594-611b-448d-b3c9-09530c0f6e0d",
+    "name": "Sunny Prabhakar",
+    "price": "12",
+    "category": "12",
+    "quantity": "12"
+  }
+]
