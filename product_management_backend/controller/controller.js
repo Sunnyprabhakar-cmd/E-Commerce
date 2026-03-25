@@ -8,6 +8,7 @@ import search from "../services/search.js";
 import filter from "../services/fileter.js";
 import update_product from "../services/update_product.js";
 import { paginate } from "../utils/pagination.js";
+import { add_to_cart,cart_info,delete_info_cart,update_cart } from "../cart/cart.js";
 
 //Creating Product
 export const createProduct=(req,res)=>{
@@ -135,14 +136,62 @@ export const update=(req,res)=>{
     update_product(name,[newName,category,price]);
     return res.json({message:"update successful"});
 }
-
+//Sorting product based on price
 export const sort_by_price=(req,res)=>{
     const temp=fetchAllProduct();
-    const sortOrder = req.params.id; // assuming 'asc' or 'desc'
+    const sortOrder = req.params.id; 
     if(sortOrder === 'asc'){
         temp.sort((a,b)=>a.price - b.price);
     } else if(sortOrder === 'desc'){
         temp.sort((a,b)=>b.price - a.price);
     }
     return res.json(temp);
+}
+export const addProductIntoCart=async(req,res)=>{
+    try{
+        const userId = req.user.id || req.user.email;
+        const result = await add_to_cart(userId,req.body.product_id,req.body.quantity);
+        if (!result?.ok) {
+            return res.status(400).json({message: result?.message || "Error in cart management", error: result?.error});
+        }
+        return res.status(200).json({message:result.message});
+    }catch(err){
+        return res.status(400).json({message:"Error in cart management",error:err.message});
+    }
+}
+
+export const deleteProductIntoCart=async(req,res)=>{
+    try{
+        const userId = req.user.id || req.user.email;
+        const result = await delete_info_cart(userId,req.body.product_id);
+        if (!result?.ok) {
+            return res.status(400).json({message: result?.message || "Error in cart management", error: result?.error});
+        }
+        return res.status(200).json({message:result.message});
+    }catch(err){
+        return res.status(400).json({message:"Error in cart management",error:err.message});
+    }
+}
+
+export const updateProductIntoCart=async(req,res)=>{
+    try{
+        const userId = req.user.id || req.user.email;
+        const result = await update_cart(userId,req.body.product_id,req.body.operation);
+        if (!result?.ok) {
+            return res.status(400).json({message: result?.message || "Error in cart management", error: result?.error});
+        }
+        return res.status(200).json({message:result.message});
+    }catch(err){
+        return res.status(400).json({message:"Error in cart management",error:err.message});
+    }
+}
+
+export const cartInfo=async(req,res)=>{
+    try{
+        const userId = req.user.id || req.user.email;
+        const pro=await cart_info(userId);
+        return res.status(200).json({data:pro});
+    }catch(err){
+        return res.status(400).json({message:"Error in cart management",error:err.message});
+    }
 }

@@ -1,5 +1,5 @@
 import express from "express";
-import {createProduct, getAllProduct,deleteProduct, getProductById,searchbar, sort_by_price, filterBasedOnPrice} from "../controller/controller.js";
+import {createProduct, getAllProduct,deleteProduct, getProductById,searchbar, sort_by_price, filterBasedOnPrice,addProductIntoCart,deleteProductIntoCart,updateProductIntoCart,cartInfo} from "../controller/controller.js";
 import  update_product  from "../services/update_product.js";
 import  registeration  from "../login&registration/register.js";
 import  login_user  from "../login&registration/login.js";
@@ -7,14 +7,24 @@ import auth from "../JWT/jwt_token.js";
 import isAdmin from "../JWT/authorization.js";
 const router=express.Router();
 
+// Auth routes (no auth needed)
+router.post("/register",registeration);
+router.post("/login",login_user);
+
+// Protected routes - specific routes BEFORE generic ones
+router.post("/search",auth,searchbar);
+router.post("/filter",auth,filterBasedOnPrice);
+router.post("/update/:id",auth,isAdmin,update_product);
+router.get("/sort/:id",auth,sort_by_price);
+router.get("/cartInfo",auth,cartInfo);
+router.post("/addProductInCart",auth,addProductIntoCart);
+router.post("/deleteProductFromCart",auth,deleteProductIntoCart);
+router.post("/updateCart",auth,updateProductIntoCart);
+
+// Generic routes - after specific ones
 router.post("/",auth,isAdmin,createProduct);
 router.get("/",auth,getAllProduct);
 router.delete("/",auth,isAdmin,deleteProduct);
-router.get("/search",auth,searchbar);
-router.get("/filter",auth,filterBasedOnPrice);
-router.post("/update/:id",auth,isAdmin,update_product);
-router.get("/sort/:id",auth,sort_by_price);
 router.get("/:id",auth,getProductById);
-router.post("/register",registeration);
-router.post("/login",login_user);
+
 export default router;

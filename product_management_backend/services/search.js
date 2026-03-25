@@ -1,5 +1,6 @@
 import product from "../product_data/data.js";
 const search=(keyword)=>{
+    try{
     const pro=[];
     if(!keyword){
         return ({message:"invalid keyword"});
@@ -12,6 +13,10 @@ const search=(keyword)=>{
     if(pro.length===0){
         return ({message:"no product available"});
     }
-    return pro;
+    return pro;}
+    catch(err){
+        return ({message:err});
+    }
 } 
+
 export default search;

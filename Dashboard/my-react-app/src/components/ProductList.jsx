@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 
-const ProductList = ({ onEdit, canManageProducts }) => {
+const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState('');
@@ -46,6 +46,19 @@ const ProductList = ({ onEdit, canManageProducts }) => {
     } catch (error) {
       const apiMessage = error.response?.data?.message || error.response?.data;
       setMessage(typeof apiMessage === 'string' ? apiMessage : 'Error deleting product');
+    }
+  };
+
+  const handleAddToCart = async (productId) => {
+    try {
+      await api.post('/addProductInCart', {
+        product_id: productId,
+        quantity: 1
+      });
+      setMessage('Product added to cart!');
+    } catch (error) {
+      const apiMessage = error.response?.data?.message || 'Error adding to cart';
+      setMessage(typeof apiMessage === 'string' ? apiMessage : 'Error adding to cart');
     }
   };
 
@@ -140,30 +153,41 @@ const ProductList = ({ onEdit, canManageProducts }) => {
       <div className="row">
         {products.map((product) => (
           <div key={product.id} className="col-md-4 mb-4">
-            <div className="card">
-              <div className="card-body">
+            <div className="card h-100">
+              <div className="card-body d-flex flex-column">
                 <h5 className="card-title">{product.name}</h5>
-                <p className="card-text">
+                <p className="card-text flex-grow-1">
                   Category: {product.category}<br />
                   Price: ${product.price}<br />
-                  Quantity: {product.quantity}
+                  Available: {product.quantity}
                 </p>
-                {canManageProducts && (
-                  <>
+                <div className="btn-group w-100">
+                  {canManageProducts && (
+                    <>
+                      <button
+                        className="btn btn-warning btn-sm"
+                        onClick={() => onEdit(product)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleDelete(product.name)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                  {!canManageProducts && (
                     <button
-                      className="btn btn-warning me-2"
-                      onClick={() => onEdit(product)}
+                      className="btn btn-primary btn-sm w-100"
+                      onClick={() => handleAddToCart(product.id)}
+                      disabled={product.quantity <= 0}
                     >
-                      Edit
+                      Add to Cart
                     </button>
-                    <button
-                      className="btn btn-danger"
-                      onClick={() => handleDelete(product.name)}
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
