@@ -3,6 +3,8 @@ import Auth from './Auth';
 import ProductList from './ProductList';
 import ProductForm from './ProductForm';
 import Cart from './Cart';
+import Orders from './Orders';
+import Wallet from './Wallet';
 
 const getRoleFromToken = (token) => {
   try {
@@ -90,6 +92,26 @@ const Dashboard = () => {
                   </button>
                 </li>
               )}
+              {userRole !== 'admin' && (
+                <li className="nav-item">
+                  <button
+                    className={`btn nav-link ${currentView === 'orders' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('orders')}
+                  >
+                    Orders
+                  </button>
+                </li>
+              )}
+              {userRole !== 'admin' && (
+                <li className="nav-item">
+                  <button
+                    className={`btn nav-link ${currentView === 'wallet' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('wallet')}
+                  >
+                    Wallet
+                  </button>
+                </li>
+              )}
               <li className="nav-item">
                 <span className="navbar-text text-light me-3">
                   Role: {userRole || 'unknown'}
@@ -120,6 +142,10 @@ const Dashboard = () => {
         />
       ) : currentView === 'cart' ? (
         <Cart onNavigate={handleViewChange} />
+      ) : currentView === 'orders' ? (
+        <Orders onNavigate={handleViewChange} />
+      ) : currentView === 'wallet' ? (
+        <Wallet onNavigate={handleViewChange} />
       ) : null}
     </div>
   );

@@ -1,5 +1,6 @@
 import db from "../database/database.js";
 import { hashPassword } from "../bcrypt/bcrypt.js";
+import { create_wallet } from "../payment/wallet.js";
 const registeration=async(req,res)=>{
    try{
     const{name,password,email,phone} =req.body||{};
@@ -22,6 +23,10 @@ const registeration=async(req,res)=>{
         "INSERT INTO users(name,password,email,phone,role) values($1,$2,$3,$4,$5) RETURNING id,name,email,phone,role",
         [name,hashpass, email,phone,"user"]
     );
+
+    // Make sure wallet exists for every registered user.
+    await create_wallet(addUser.rows[0].id);
+
     return res.status(201).json({
         message:"User registered successfully",
         user:addUser.rows[0],

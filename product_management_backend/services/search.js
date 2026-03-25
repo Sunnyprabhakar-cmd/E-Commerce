@@ -1,22 +1,23 @@
-import product from "../product_data/data.js";
-const search=(keyword)=>{
-    try{
-    const pro=[];
-    if(!keyword){
-        return ({message:"invalid keyword"});
-    }
-    for(var i=0;i<product.length;i++){
-        if(product[i].category===keyword){
-            pro.push(product[i]);
+import db from "../database/database.js";
+
+const search = async (keyword) => {
+    try {
+        if (!keyword) {
+            return { message: "invalid keyword" };
         }
+
+        const result = await db.query(
+            "SELECT id,name,price,category,quantity FROM products WHERE category ILIKE $1 OR name ILIKE $1 ORDER BY created_at DESC",
+            [`%${keyword}%`]
+        );
+
+        if (result.rows.length === 0) {
+            return { message: "no product available" };
+        }
+        return result.rows;
+    } catch (err) {
+        return { message: err.message };
     }
-    if(pro.length===0){
-        return ({message:"no product available"});
-    }
-    return pro;}
-    catch(err){
-        return ({message:err});
-    }
-} 
+};
 
 export default search;

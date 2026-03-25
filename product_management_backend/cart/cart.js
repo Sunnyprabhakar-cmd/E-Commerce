@@ -1,6 +1,4 @@
-import product from "../product_data/data.js";
 import db from "../database/database.js";
-import auth from "../JWT/jwt_token.js";
 
 let isCartSchemaReady = false;
 
@@ -27,8 +25,11 @@ export const add_to_cart=async(user_id,product_id,quantity)=>{
         }
         const qty = Number(quantity) || 1;
         const pid = String(product_id);
-        const existingProduct = product.find(p => String(p.id) === pid);
-        if (!existingProduct) {
+        const existingProduct = await db.query(
+            "SELECT id,name,price,category FROM products WHERE id=$1 LIMIT 1",
+            [pid]
+        );
+        if (existingProduct.rows.length === 0) {
             return {ok:false,message:"Product not found"};
         }
 
@@ -50,24 +51,23 @@ export const cart_info=async(user_id)=>{
         if(!user_id){
             return ({message:"Invalid user"});
         }
-        const productInCart=await db.query("SELECT * FROM cart_items WHERE user_id=$1",[user_id]);
+        const productInCart=await db.query(
+            `SELECT c.user_id,c.product_id,c.quantity,
+                    p.name AS product_name,
+                    p.price,
+                    p.category
+             FROM cart_items c
+             LEFT JOIN products p ON p.id = c.product_id
+             WHERE c.user_id=$1`,
+            [user_id]
+        );
 
-        // Enrich cart items with product details from in-memory array
-        const enrichedItems = productInCart.rows.map(cartItem => {
-            const prod = product.find(p => {
-                // Try matching by id (could be string or number)
-                return String(p.id) === String(cartItem.product_id);
-            });
-
-            return {
-                ...cartItem,
-                product_name: prod?.name || `Product ${cartItem.product_id}`,
-                price: prod?.price || 0,
-                category: prod?.category || 'N/A'
-            };
-        });
-
-        return enrichedItems;
+        return productInCart.rows.map((row) => ({
+            ...row,
+            product_name: row.product_name || `Product ${row.product_id}`,
+            price: Number(row.price || 0),
+            category: row.category || 'N/A',
+        }));
     }catch(err){
         return ({message:"Error in cart management",error:err.message});
     }

@@ -1,22 +1,50 @@
-import product from "../product_data/data.js";
-import { saveProducts } from "../utils/storage.js";
+import db from "../database/database.js";
 
 const update_product = (req, res) => {
-    const { id } = req.params;
-    const { name, category, price, quantity } = req.body;
+    const run = async () => {
+        const { id } = req.params;
+        const { name, category, price, quantity } = req.body;
 
-    const productIndex = product.findIndex(p => p.id === id);
-    if (productIndex === -1) {
-        return res.status(404).json({ message: "Product not found" });
-    }
+        const fields = [];
+        const values = [];
 
-    if (name) product[productIndex].name = name;
-    if (category) product[productIndex].category = category;
-    if (price) product[productIndex].price = price;
-    if (quantity) product[productIndex].quantity = quantity;
+        if (name != null && name !== "") {
+            values.push(name);
+            fields.push(`name=$${values.length}`);
+        }
+        if (category != null && category !== "") {
+            values.push(category);
+            fields.push(`category=$${values.length}`);
+        }
+        if (price != null && price !== "") {
+            values.push(Number(price));
+            fields.push(`price=$${values.length}`);
+        }
+        if (quantity != null && quantity !== "") {
+            values.push(Number(quantity));
+            fields.push(`quantity=$${values.length}`);
+        }
 
-    saveProducts();
-    return res.status(200).json({ message: "Product updated successfully", product: product[productIndex] });
+        if (fields.length === 0) {
+            return res.status(400).json({ message: "No fields provided to update" });
+        }
+
+        values.push(id);
+        const updated = await db.query(
+            `UPDATE products SET ${fields.join(",")} WHERE id=$${values.length} RETURNING id,name,price,category,quantity`,
+            values
+        );
+
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+
+        return res.status(200).json({ message: "Product updated successfully", product: updated.rows[0] });
+    };
+
+    run().catch((err) => {
+        return res.status(500).json({ message: "Error updating product", error: err.message });
+    });
 };
 
 export default update_product;

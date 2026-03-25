@@ -1,12 +1,10 @@
-import product from "../product_data/data.js";
+import db from "../database/database.js";
 
- const filter=(from,to)=>{
-    const pro=[];
-    for(var i=0;i<product.length;i++){
-        if(product[i].price>=from && product[i].price<=to){
-            pro.push(product[i]);
-        }
-    }
-    return pro;
-}
+const filter = async (from, to) => {
+    const result = await db.query(
+        "SELECT id,name,price,category,quantity FROM products WHERE price >= $1 AND price <= $2 ORDER BY price ASC",
+        [Number(from), Number(to)]
+    );
+    return result.rows;
+};
 export default filter;

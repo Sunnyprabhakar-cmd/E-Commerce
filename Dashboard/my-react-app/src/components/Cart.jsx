@@ -5,6 +5,16 @@ const Cart = ({ onNavigate }) => {
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  const fetchWalletBalance = async () => {
+    try {
+      const response = await api.get('/avlBalance');
+      setWalletBalance(Number(response.data?.balance || 0));
+    } catch {
+      setWalletBalance(0);
+    }
+  };
 
   const fetchCartItems = async () => {
     try {
@@ -13,6 +23,7 @@ const Cart = ({ onNavigate }) => {
       const data = response.data?.data;
       const items = Array.isArray(data) ? data : [];
       setCartItems(items);
+      await fetchWalletBalance();
     } catch (error) {
       console.error('Error fetching cart:', error);
       if (error.code === 'ERR_NETWORK') {
@@ -68,6 +79,100 @@ const Cart = ({ onNavigate }) => {
     }
   };
 
+  const handlePlaceOrder = async (item) => {
+    const orderCost = Number(item.price || 0) * Number(item.quantity || 0);
+    if (orderCost <= 0) {
+      setMessage('Invalid order cost');
+      return;
+    }
+
+    if (walletBalance < orderCost) {
+      setMessage('Insufficient wallet balance. Please add funds in Wallet.');
+      return;
+    }
+
+    try {
+      await api.post('/afterOrder', {
+        price: orderCost,
+        type: 'debit',
+        reference_type: 'order',
+        message: `Payment for product ${item.product_id}`,
+        order_id: null
+      });
+
+      await api.post('/placeOrder', {
+        product_id: item.product_id,
+        quantity: item.quantity,
+        product_price: item.price
+      });
+
+      await api.post('/deleteProductFromCart', { product_id: item.product_id });
+      setMessage('Order placed successfully!');
+      fetchCartItems();
+    } catch (error) {
+      // If order placement fails after debit, credit back the amount.
+      try {
+        await api.post('/balanceCredit', {
+          price: orderCost,
+          type: 'credit',
+          reference_type: 'order_refund',
+          message: `Auto-refund for failed order ${item.product_id}`,
+          order_id: null
+        });
+      } catch {
+        // ignore refund failure here; surface primary error below
+      }
+      const errorMsg = error.response?.data?.message || 'Error placing order';
+      setMessage(errorMsg);
+      fetchWalletBalance();
+    }
+  };
+
+  const handleCheckout = async () => {
+    if (cartItems.length === 0) {
+      setMessage('Your cart is empty');
+      return;
+    }
+    try {
+      const totalOrderCost = cartItems.reduce(
+        (sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)),
+        0
+      );
+
+      if (walletBalance < totalOrderCost) {
+        setMessage('Insufficient wallet balance for checkout. Please add funds in Wallet.');
+        return;
+      }
+
+      for (const item of cartItems) {
+        const orderCost = Number(item.price || 0) * Number(item.quantity || 0);
+
+        await api.post('/afterOrder', {
+          price: orderCost,
+          type: 'debit',
+          reference_type: 'order',
+          message: `Payment for product ${item.product_id}`,
+          order_id: null
+        });
+
+        await api.post('/placeOrder', {
+          product_id: item.product_id,
+          quantity: item.quantity,
+          product_price: item.price
+        });
+
+        await api.post('/deleteProductFromCart', { product_id: item.product_id });
+      }
+      setMessage('Checkout complete! All cart items were ordered.');
+      fetchCartItems();
+      onNavigate && onNavigate('orders');
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Checkout failed';
+      setMessage(errorMsg);
+      fetchWalletBalance();
+    }
+  };
+
   useEffect(() => {
     fetchCartItems();
   }, []);
@@ -90,6 +195,12 @@ const Cart = ({ onNavigate }) => {
       </div>
       <h2>Shopping Cart</h2>
       {message && <div className="alert alert-info">{message}</div>}
+      <div className="alert alert-secondary d-flex justify-content-between align-items-center">
+        <span>Wallet Balance: <strong>${walletBalance.toFixed(2)}</strong></span>
+        <button className="btn btn-sm btn-outline-primary" onClick={() => onNavigate && onNavigate('wallet')}>
+          Add Funds
+        </button>
+      </div>
 
       {cartItems.length === 0 ? (
         <div className="alert alert-warning">Your cart is empty</div>
@@ -143,6 +254,12 @@ const Cart = ({ onNavigate }) => {
                       >
                         Remove
                       </button>
+                      <button
+                        className="btn btn-sm btn-success ms-2"
+                        onClick={() => handlePlaceOrder(item)}
+                      >
+                        Place Order
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -158,7 +275,7 @@ const Cart = ({ onNavigate }) => {
                   <h4 className="text-success">
                     Total: ${totalPrice.toFixed(2)}
                   </h4>
-                  <button className="btn btn-primary w-100 mt-3">
+                  <button className="btn btn-primary w-100 mt-3" onClick={handleCheckout}>
                     Proceed to Checkout
                   </button>
                 </div>

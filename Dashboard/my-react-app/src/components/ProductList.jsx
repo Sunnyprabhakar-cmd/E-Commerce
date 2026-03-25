@@ -33,14 +33,14 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
     }
   };
 
-  const handleDelete = async (name) => {
+  const handleDelete = async (id) => {
     if (!canManageProducts) {
       setMessage('Only admin can delete products.');
       return;
     }
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
-      await api.delete('/', { data: { name } });
+      await api.delete('/', { data: { id } });
       setMessage('Product deleted successfully.');
       fetchProducts();
     } catch (error) {
@@ -172,7 +172,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
-                        onClick={() => handleDelete(product.name)}
+                        onClick={() => handleDelete(product.id)}
                       >
                         Delete
                       </button>
