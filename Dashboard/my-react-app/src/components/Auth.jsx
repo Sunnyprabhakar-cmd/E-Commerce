@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 const Auth = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -59,6 +59,7 @@ const Auth = ({ onLogin }) => {
                         type="text"
                         className="form-control"
                         name="name"
+                        autoComplete="name"
                         value={formData.name}
                         onChange={handleChange}
                         required
@@ -70,6 +71,7 @@ const Auth = ({ onLogin }) => {
                         type="text"
                         className="form-control"
                         name="phone"
+                        autoComplete="tel"
                         value={formData.phone}
                         onChange={handleChange}
                         required
@@ -83,6 +85,7 @@ const Auth = ({ onLogin }) => {
                     type="email"
                     className="form-control"
                     name="email"
+                    autoComplete="email"
                     value={formData.email}
                     onChange={handleChange}
                     required
@@ -94,6 +97,7 @@ const Auth = ({ onLogin }) => {
                     type="password"
                     className="form-control"
                     name="password"
+                    autoComplete={isLogin ? "current-password" : "new-password"}
                     value={formData.password}
                     onChange={handleChange}
                     required

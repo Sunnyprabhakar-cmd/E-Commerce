@@ -7,6 +7,19 @@ export const ensureProductSchema = async () => {
     if (isProductSchemaReady) {
         return;
     }
+
+    // Normalize legacy schema if products table already exists with product_id.
+    const hasProductId = await db.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='product_id' LIMIT 1"
+    );
+    const hasId = await db.query(
+        "SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='id' LIMIT 1"
+    );
+
+    if (hasProductId.rows.length > 0 && hasId.rows.length === 0) {
+        await db.query("ALTER TABLE products RENAME COLUMN product_id TO id");
+    }
+
     await db.query(`
         CREATE TABLE IF NOT EXISTS products (
             id TEXT PRIMARY KEY,
@@ -17,6 +30,14 @@ export const ensureProductSchema = async () => {
             created_at TIMESTAMP DEFAULT NOW()
         )
     `);
+
+    // Ensure required columns exist in legacy tables.
+    await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()");
+    await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1");
+
+    // Keep API stable: product IDs are treated as strings across backend/frontend.
+    await db.query("ALTER TABLE products ALTER COLUMN id TYPE TEXT USING id::text");
+
     isProductSchemaReady = true;
 };
 

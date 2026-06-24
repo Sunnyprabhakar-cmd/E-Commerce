@@ -11,11 +11,12 @@ import  registeration  from "../login&registration/register.js";
 import  login_user  from "../login&registration/login.js";
 import auth from "../JWT/jwt_token.js";
 import isAdmin from "../JWT/authorization.js";
+import { authlimiter } from "../middleware/middleware.js";
 const router=express.Router();
 
 // Auth routes (no auth needed)
-router.post("/register",registeration);
-router.post("/login",login_user);
+router.post("/register",authlimiter,registeration);
+router.post("/login",authlimiter,login_user);
 
 // Protected routes - specific routes BEFORE generic ones
 router.post("/search",auth,searchbar);

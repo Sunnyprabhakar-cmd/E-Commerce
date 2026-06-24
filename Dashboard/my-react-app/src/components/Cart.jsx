@@ -27,7 +27,7 @@ const Cart = ({ onNavigate }) => {
     } catch (error) {
       console.error('Error fetching cart:', error);
       if (error.code === 'ERR_NETWORK') {
-        setMessage('Cannot reach backend server on http://localhost:3000. Start backend with: npm start');
+        setMessage('Cannot reach backend server on http://localhost:3001. Start backend with: npm start');
       } else {
         const errorMsg = error.response?.data?.message || 'Error loading cart items';
         setMessage(errorMsg);
