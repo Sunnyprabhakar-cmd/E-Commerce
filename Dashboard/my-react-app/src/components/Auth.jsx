@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.render.com/deploy/srv-d8tq91e7r5hc73akl6ng?key=1CAnE3jWe5E';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://e-commerce-4nit.onrender.com';
 
 const Auth = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
