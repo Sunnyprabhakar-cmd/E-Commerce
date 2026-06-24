@@ -41,18 +41,19 @@ export const ensureProductSchema = async () => {
     isProductSchemaReady = true;
 };
 
-export const addProduct = async (name, price, category, quantity) => {
+export const addProduct = async (id,name, price, category,piece ,quantity) => {
     await ensureProductSchema();
     const newProduct = {
-        id: uuidv4(),
+        id,
         name,
         price: Number(price),
         category,
+        piece,
         quantity: Number(quantity),
     };
 
     const inserted = await db.query(
-        "INSERT INTO products(id,name,price,category,quantity) VALUES ($1,$2,$3,$4,$5) RETURNING id,name,price,category,quantity",
+        "INSERT INTO products(id,name,price,category,piece,quantity) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,name,price,category,piece,quantity",
         [newProduct.id, newProduct.name, newProduct.price, newProduct.category, newProduct.quantity]
     );
     return inserted.rows[0];

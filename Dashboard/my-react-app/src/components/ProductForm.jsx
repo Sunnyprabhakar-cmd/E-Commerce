@@ -2,9 +2,11 @@ import { useState } from 'react';
 import api from '../api/client';
 
 const getInitialFormData = (product) => ({
+  id: product?.id || '',
   name: product?.name || '',
   price: product?.price || '',
   category: product?.category || '',
+  piece: product?.price || '',
   quantity: product?.quantity || ''
 });
 
@@ -52,6 +54,15 @@ const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
             </div>
             <div className="card-body">
               <form onSubmit={handleSubmit}>
+              <div className="mb-3">
+              <label>Product ID</label>
+              <input
+                type="text"
+                className="form-control"
+                value={productId}
+                onChange={(e) => setProductId(e.target.value)}
+                placeholder="Enter Product ID"/>
+            </div>
                 <div className="mb-3">
                   <label className="form-label">Name</label>
                   <input
@@ -85,6 +96,16 @@ const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
                     value={formData.category}
                     onChange={handleChange}
                     required
+                  />
+                </div>
+                <div className="mb-3">
+                  <label>Product ID</label>
+                   <input
+                   type="text"
+                   className="form-control"
+                   value={productId}
+                   onChange={(e) => setProductId(e.target.value)}
+                   placeholder="Enter Product ID"
                   />
                 </div>
                 <div className="mb-3">
