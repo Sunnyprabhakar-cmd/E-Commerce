@@ -6,7 +6,7 @@ const getInitialFormData = (product) => ({
   name: product?.name || '',
   price: product?.price || '',
   category: product?.category || '',
-  piece: product?.price || '',
+  piece: product?.piece || '',
   quantity: product?.quantity || ''
 });
 
@@ -57,11 +57,13 @@ const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
               <div className="mb-3">
               <label>Product ID</label>
               <input
-                type="text"
+                type="number"
                 className="form-control"
-                value={productId}
-                onChange={(e) => setProductId(e.target.value)}
-                placeholder="Enter Product ID"/>
+                name="id"
+                value={formData.id}
+                onChange={handleChange}
+                required
+                />
             </div>
                 <div className="mb-3">
                   <label className="form-label">Name</label>
@@ -99,13 +101,15 @@ const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label>Product ID</label>
+                  <label>Piece</label>
                    <input
-                   type="text"
+                   type="number"
                    className="form-control"
-                   value={productId}
-                   onChange={(e) => setProductId(e.target.value)}
-                   placeholder="Enter Product ID"
+                   name="piece"
+                   value={formData.piece}
+                   onChange={handleChange}
+                   required
+                   min="0"
                   />
                 </div>
                 <div className="mb-3">

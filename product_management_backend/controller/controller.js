@@ -34,6 +34,11 @@ export const createProduct=(req,res)=>{
             message:"invalid category",
         })
     }
+    if(!piece || piece<0){
+        return res.status(400).json({
+            message:"invalid piece",
+        })
+    }
     if(!quantity){
         quantity=1;
     }

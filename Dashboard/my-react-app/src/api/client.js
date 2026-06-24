@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://api.render.com/deploy/srv-d8tq91e7r5hc73akl6ng?key=1CAnE3jWe5E'
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://e-commerce-4nit.onrender.com'
 });
 
 api.interceptors.request.use((config) => {
