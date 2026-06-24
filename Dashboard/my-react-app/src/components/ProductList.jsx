@@ -158,7 +158,8 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
                 <h5 className="card-title">{product.name}</h5>
                 <p className="card-text flex-grow-1">
                   Category: {product.category}<br />
-                  Price: ${product.price}<br />
+                  piece:{product.piece}<br />
+                  Price: ₹{product.price}<br />
                   Available: {product.quantity}
                 </p>
                 <div className="btn-group w-100">
