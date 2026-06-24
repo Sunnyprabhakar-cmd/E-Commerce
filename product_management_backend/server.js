@@ -4,7 +4,7 @@ import { ensureProductSchema } from "./product_model/model.js";
 import helmet from "helmet";
 import { globallimiter } from "./middleware/middleware.js";
 const app=express();
-const allowedOrigins = new Set(["http://localhost:5173", "http://localhost:5174"]);
+const allowedOrigins = new Set(["http://localhost:5173", "http://localhost:5174","https://e-commerce-two-pi-81.vercel.app/"]);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
