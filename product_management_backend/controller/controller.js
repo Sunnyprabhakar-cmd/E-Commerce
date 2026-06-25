@@ -164,24 +164,26 @@ export const filterBasedOnPrice=(req,res)=>{
 }
 
 //updating the product 
-export const update=(req,res)=>{
-    try{
-    let {name,newName,category,price}=req.body;
-    if(!name){
-        return ({message:"invalid name"});
+// updating the product
+export const update = (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                message: "Invalid product id",
+            });
+        }
+
+        return update_product(req, res);
+
+    } catch (err) {
+        return res.status(400).json({
+            message: "Some error occurred",
+            error: err.message,
+        });
     }
-    else if(!category){
-        return ({message:"invalid update value"});
-    }
-    else{
-        return ({message:"invalid update value"});
-    }
-    update_product(name,[newName,category,price]);
-    return res.json({message:"update successful"});
-   }catch(err){
-        return res.status(400).json({message:"some error occured",error:err});
-    }
-}
+};
 //Sorting product based on price
 export const sort_by_price=(req,res)=>{
     try{

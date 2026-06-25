@@ -3,7 +3,7 @@ import db from "../database/database.js";
 const update_product = (req, res) => {
     const run = async () => {
         const { id } = req.params;
-        const { name, category, price, quantity } = req.body;
+        const { name, category, price, piece, availability } = req.body;
 
         const fields = [];
         const values = [];
@@ -20,6 +20,10 @@ const update_product = (req, res) => {
             values.push(Number(price));
             fields.push(`price=$${values.length}`);
         }
+        if (piece != null && piece !== "") {
+             values.push(Number(piece));
+            fields.push(`piece=$${values.length}`);
+       }
         if (availability !== undefined) {
            values.push(availability);
            fields.push(`availability=$${values.length}`);
@@ -31,7 +35,7 @@ const update_product = (req, res) => {
 
         values.push(id);
         const updated = await db.query(
-            `UPDATE products SET ${fields.join(",")} WHERE id=$${values.length} RETURNING id,name,price,category,quantity`,
+            `UPDATE products SET ${fields.join(",")} WHERE id=$${values.length} RETURNING id,name,price,category,piece,availability`,
             values
         );
 
@@ -43,6 +47,8 @@ const update_product = (req, res) => {
     };
 
     run().catch((err) => {
+         console.error(err);        // prints full error
+    console.error(err.stack);  // prints file + line number
         return res.status(500).json({ message: "Error updating product", error: err.message });
     });
 };
