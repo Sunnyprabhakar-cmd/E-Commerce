@@ -260,9 +260,11 @@ export const addToOrders=async(req,res)=>{
         const payment_mode = req.body.payment_mode || null;
         const payment_reference = req.body.payment_reference || null;
         const payment_notes = req.body.payment_notes || null;
+        const order_group_id = req.body.order_group_id || null;
         let orderItem = await placeOrder(
             req.body.product_id,
             user_id,
+            order_group_id,
             req.body.quantity,
             req.body.product_price,
             is_paid,

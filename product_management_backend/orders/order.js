@@ -13,6 +13,7 @@ const ensureOrderSchema = async () => {
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_mode TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_reference TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_notes TEXT");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_group_id TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_paid NUMERIC DEFAULT 0");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS remaining_amount NUMERIC DEFAULT 0");
     await db.query(`
@@ -58,6 +59,7 @@ const recordOrderAction = async (
 export const placeOrder = async (
     product_id,
     user_id,
+    order_group_id = null,
     quantity,
     product_price,
     is_paid = true,
@@ -88,8 +90,8 @@ export const placeOrder = async (
 
         try {
             const created = await db.query(
-                "INSERT INTO orders(product_id,user_id,quantity,product_price,total_cost,is_paid,status,payment_mode,payment_reference,payment_notes,amount_paid,remaining_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING order_id",
-                [pid, user_id, qty, unitPrice, total_cost, is_paid, status, final_payment_mode, final_payment_reference, final_payment_notes, amount_paid, remaining_amount]
+                "INSERT INTO orders(product_id,user_id,order_group_id,quantity,product_price,total_cost,is_paid,status,payment_mode,payment_reference,payment_notes,amount_paid,remaining_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING order_id",
+                [pid, user_id, order_group_id, qty, unitPrice, total_cost, is_paid, status, final_payment_mode, final_payment_reference, final_payment_notes, amount_paid, remaining_amount]
             );
             const orderId = created.rows?.[0]?.order_id ?? null;
             if (orderId) {
