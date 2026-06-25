@@ -138,13 +138,6 @@ const Orders = ({ onNavigate, userRole }) => {
     return Math.max(total - paid, 0);
   };
 
-  const createGroupInvoiceHtml = (group) => {
-    const totalCost = Number(group.totalCost || 0).toFixed(2);
-    const amountPaid = Number(group.totalPaid || 0).toFixed(2);
-    const remaining = Number(group.totalRemaining || 0).toFixed(2);
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${group.groupId}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{border:1px solid #ddd;padding:10px;text-align:left;}th{background:#f5f5f5;}p{margin:6px 0;}</style></head><body><h1>Invoice</h1><p><strong>Order Group:</strong> ${group.groupId}</p><p><strong>Customer:</strong> ${group.customerName || 'N/A'}</p><p><strong>Customer ID:</strong> ${group.customerId || 'N/A'}</p><p><strong>Payment Status:</strong> ${group.paymentStatus}</p><table><thead><tr><th>Product Name</th><th>Product ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th></tr></thead><tbody>${group.orders.map((order) => `<tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${Number(order.total_cost || 0).toFixed(2)}</td></tr>`).join('')}</tbody></table><p><strong>Total Amount:</strong> $${totalCost}</p><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining Amount:</strong> $${remaining}</p><p><strong>Payment Mode:</strong> ${group.paymentMode || 'N/A'}</p><p><strong>Handled By:</strong> ${group.lastActionBy || 'N/A'}</p></body></html>`;
-  };
-
   const createInvoiceHtml = (order) => {
     const paymentStatus = getPaymentStatus(order);
     const totalCost = Number(order.total_cost || 0).toFixed(2);
@@ -413,6 +406,18 @@ const Orders = ({ onNavigate, userRole }) => {
     setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  useEffect(() => {
+    const nextExpanded = {};
+    orderGroups.forEach((group) => {
+      if (group.orders.length > 1) {
+        nextExpanded[group.groupId] = expandedGroups[group.groupId] ?? true;
+      }
+    });
+    if (Object.keys(nextExpanded).length > 0) {
+      setExpandedGroups((prev) => ({ ...nextExpanded, ...prev }));
+    }
+  }, [orderGroups]);
+
   if (loading) {
     return <div className="text-center mt-5">Loading orders...</div>;
   }
@@ -514,11 +519,12 @@ const Orders = ({ onNavigate, userRole }) => {
                     <tr className="table-active">
                       <td>
                         <button
-                          className="btn btn-sm btn-outline-link"
+                          className="btn btn-sm btn-outline-primary"
                           onClick={() => toggleGroupExpansion(group.groupId)}
                         >
-                          {expandedGroups[group.groupId] ? '▼' : '▶'} {group.groupId}
+                          {expandedGroups[group.groupId] ? 'Hide items' : 'Show items'}
                         </button>
+                        <div className="mt-1 small text-muted">{group.groupId}</div>
                       </td>
                       {adminView && <td>{group.customerName}</td>}
                       {adminView && <td>{group.customerId}</td>}
