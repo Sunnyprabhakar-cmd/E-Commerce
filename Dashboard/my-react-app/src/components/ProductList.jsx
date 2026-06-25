@@ -183,7 +183,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
                     <button
                       className="btn btn-primary btn-sm w-100"
                       onClick={() => handleAddToCart(product.id)}
-                      disabled={product.available != true}
+                      disabled={product.availability != true}
                     >
                       Add to Cart
                     </button>
