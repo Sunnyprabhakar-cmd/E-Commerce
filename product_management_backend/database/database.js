@@ -20,6 +20,12 @@ const isValidConnectionString = (conn) => {
   }
 };
 
+const shouldUseSslForHost = (host) => {
+  if (!host || typeof host !== 'string') return false;
+  const normalizedHost = host.toLowerCase().trim();
+  return !/^(localhost|127\.0\.0\.1|::1)$/.test(normalizedHost);
+};
+
 const dbConfig = isValidConnectionString(connectionString)
   ? {
       connectionString,
@@ -31,7 +37,9 @@ const dbConfig = isValidConnectionString(connectionString)
       user: process.env.PG_USER,
       password: process.env.PG_PASSWORD,
       database: process.env.PG_DATABASE,
-      ssl: explicitSsl ? { rejectUnauthorized: false } : false,
+      ssl: explicitSsl || shouldUseSslForHost(process.env.PG_HOST)
+        ? { rejectUnauthorized: false }
+        : false,
     };
 
 if (!isValidConnectionString(connectionString) && connectionString) {
