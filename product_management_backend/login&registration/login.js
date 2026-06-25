@@ -6,7 +6,7 @@ env.config();
  const login_user=async(req,res)=>{
     try{
     const{email,password}=req.body;
-    const verification=await db.query("SELECT id,email,password,role FROM users WHERE email=$1",[email]);
+     const verification=await db.query("SELECT id,name,email,password,role FROM users WHERE email=$1",[email]);
     
     if(verification.rows.length === 0){
         return res.status(401).json({message:"Invalid email or password"});
@@ -17,6 +17,7 @@ env.config();
         const token=jwt.sign(
             {
                 id: verification.rows[0].id,
+                name: verification.rows[0].name,
                 email: verification.rows[0].email,
                 role: verification.rows[0].role,
             },

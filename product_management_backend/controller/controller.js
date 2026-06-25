@@ -16,6 +16,15 @@ import {
     wallet_details as wallet_details_service,
     add_balance,
 } from "../payment/wallet.js";
+import {
+    getAdminSummary,
+    getStockEntries,
+    createStockEntry,
+    listEmployees,
+    saveEmployeePermissions,
+    adjustEmployeeSalary,
+    getSalaryHistory,
+} from "../services/admin_portal.js";
 //Creating Product
 export const createProduct=(req,res)=>{
     try{
@@ -306,6 +315,14 @@ export const adminOrderAction = async (req, res) => {
             return res.status(400).json({ message: "order_id and action are required" });
         }
 
+        if (req.user.role !== 'admin' && requestedAction !== 'apply_discount') {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+
+        if (requestedAction === 'apply_discount' && req.user.role !== 'admin' && !req.user.permissions?.can_apply_discount) {
+            return res.status(403).json({ message: 'Access denied for discount actions' });
+        }
+
         if (requestedAction === 'cancel') {
             // support cancelling an order group
             let reply;
@@ -449,6 +466,93 @@ export const adminOrderAction = async (req, res) => {
     }
 }
 
+export const adminSummary = async (_req, res) => {
+    try {
+        const summary = await getAdminSummary();
+        return res.status(200).json({ message: 'summary fetched', summary });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const stockList = async (_req, res) => {
+    try {
+        const entries = await getStockEntries();
+        return res.status(200).json({ message: 'stock entries fetched', entries });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const stockCreate = async (req, res) => {
+    try {
+        const result = await createStockEntry({
+            product_id: req.body.product_id || req.body.productId,
+            units: req.body.units,
+            notes: req.body.notes,
+            recorded_by_user_id: req.user.id || req.user.email,
+            recorded_by_name: req.user.name || req.user.username || null,
+        });
+
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+
+        return res.status(201).json({ message: 'stock entry created', entry: result.entry });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeList = async (_req, res) => {
+    try {
+        const employees = await listEmployees();
+        return res.status(200).json({ message: 'employees fetched', employees });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeUpsert = async (req, res) => {
+    try {
+        const result = await saveEmployeePermissions(req.params.id || req.body.employee_id, req.body);
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'employee permissions saved', employee: result.employee });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeSalaryAdjust = async (req, res) => {
+    try {
+        const result = await adjustEmployeeSalary(
+            req.params.id || req.body.employee_id,
+            req.body.amount,
+            req.body.reason,
+            req.body.adjustment_type,
+            req.user.id || req.user.email,
+            req.user.name || req.user.username || null
+        );
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'salary updated', ...result });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeSalaryHistory = async (req, res) => {
+    try {
+        const history = await getSalaryHistory(req.params.id);
+        return res.status(200).json({ message: 'salary history fetched', history });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
 export const removeOrder=async(req,res)=>{
     try{
        const userId = req.user.id || req.user.email;
@@ -524,6 +628,17 @@ export const getOrderActionHistory = async (req, res) => {
             return res.status(400).json({ message: 'order id is required' });
         }
         const actions = await fetchOrderActions(orderId);
+        if (actions.length === 0 && String(orderId).startsWith('group-')) {
+            const groupedOrders = await fetchAllOrders();
+            const matchingGroup = groupedOrders.orders?.filter((order) => order.order_group_id === orderId) || [];
+            const mergedActions = [];
+            for (const order of matchingGroup) {
+                const orderActions = await fetchOrderActions(order.order_id);
+                mergedActions.push(...orderActions);
+            }
+            mergedActions.sort((left, right) => new Date(right.created_at) - new Date(left.created_at));
+            return res.status(200).json({ message: 'order action history fetched', actions: mergedActions });
+        }
         return res.status(200).json({ message: 'order action history fetched', actions });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });

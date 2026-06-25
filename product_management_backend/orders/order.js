@@ -622,10 +622,13 @@ export const fetchAllOrders = async () => {
 export const fetchOrderActions = async (order_id) => {
     try {
         await ensureOrderSchema();
+        if (!order_id) {
+            return [];
+        }
         const result = await db.query(
             `SELECT action_id, order_id, action_by_user_id, action_by_user_name, action_by_user_phone, action_by_role, action_type, action_note, action_metadata, created_at
             FROM order_actions
-            WHERE order_id = $1
+            WHERE CAST(order_id AS TEXT) = CAST($1 AS TEXT)
             ORDER BY created_at DESC`,
             [order_id]
         );

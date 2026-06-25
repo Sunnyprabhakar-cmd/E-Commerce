@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Auth from './Auth';
 import ProductList from './ProductList';
 import ProductForm from './ProductForm';
 import Cart from './Cart';
 import Orders from './Orders';
-import Wallet from './Wallet';
+import AdminOverview from './AdminOverview';
+import StockManager from './StockManager';
+import EmployeeManager from './EmployeeManager';
 
-const getRoleFromToken = (token) => {
+const decodeToken = (token) => {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload?.role || null;
+    if (!token) return null;
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded));
   } catch {
     return null;
   }
@@ -18,11 +22,18 @@ const getRoleFromToken = (token) => {
 const Dashboard = () => {
   const existingToken = localStorage.getItem('token');
   const [isLoggedIn, setIsLoggedIn] = useState(!!existingToken);
-  const [userRole, setUserRole] = useState(getRoleFromToken(existingToken));
+  const [session, setSession] = useState(() => decodeToken(existingToken));
+  const userRole = session?.role || null;
+  const permissions = session?.permissions || {};
   const [currentView, setCurrentView] = useState(() => {
-    return localStorage.getItem('currentView') || 'list';
+    return localStorage.getItem('currentView') || (userRole === 'admin' ? 'overview' : 'list');
   });
   const [editingProduct, setEditingProduct] = useState(null);
+
+  const canManageProducts = userRole === 'admin' || permissions.can_create_product || permissions.can_update_product || permissions.can_delete_product;
+  const canManageStock = userRole === 'admin' || permissions.can_manage_stock;
+  const canManageEmployees = userRole === 'admin' || permissions.can_manage_employees;
+  const isAdmin = userRole === 'admin';
 
   const handleViewChange = (view) => {
     setCurrentView(view);
@@ -32,20 +43,24 @@ const Dashboard = () => {
   const handleLogin = () => {
     const token = localStorage.getItem('token');
     setIsLoggedIn(true);
-    setUserRole(getRoleFromToken(token));
+    const nextSession = decodeToken(token);
+    setSession(nextSession);
+    const allowedInitialView = nextSession?.role === 'admin' ? 'overview' : 'list';
+    setCurrentView(allowedInitialView);
+    localStorage.setItem('currentView', allowedInitialView);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('currentView');
     setIsLoggedIn(false);
-    setUserRole(null);
+    setSession(null);
     setCurrentView('list');
     setEditingProduct(null);
   };
 
   const handleEdit = (product) => {
-    if (userRole !== 'admin') return;
+    if (!canManageProducts) return;
     setEditingProduct(product);
     setCurrentView('form');
   };
@@ -64,16 +79,40 @@ const Dashboard = () => {
     return <Auth onLogin={handleLogin} />;
   }
 
+  const visibleViews = isAdmin
+    ? ['overview', 'list', 'orders', 'stock', 'employees']
+    : ['list', 'cart', 'orders'];
+
+  useEffect(() => {
+    if (!visibleViews.includes(currentView)) {
+      const fallbackView = isAdmin ? 'overview' : 'list';
+      setCurrentView(fallbackView);
+      localStorage.setItem('currentView', fallbackView);
+    }
+  }, [currentView, isAdmin]);
+
   return (
-    <div>
-      <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div className="dashboard-shell">
+      <nav className="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
         <div className="container-fluid">
-          <a className="navbar-brand" href="#">Product Dashboard</a>
+          <button className="navbar-brand btn btn-link text-white text-decoration-none" type="button" onClick={() => handleViewChange(isAdmin ? 'overview' : 'list')}>
+            Pearry's Dashboard
+          </button>
           <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <span className="navbar-toggler-icon"></span>
           </button>
           <div className="collapse navbar-collapse" id="navbarNav">
             <ul className="navbar-nav ms-auto">
+              {isAdmin && (
+                <li className="nav-item">
+                  <button
+                    className={`btn nav-link ${currentView === 'overview' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('overview')}
+                  >
+                    Overview
+                  </button>
+                </li>
+              )}
               <li className="nav-item">
                 <button
                   className={`btn nav-link ${currentView === 'list' ? 'active' : ''}`}
@@ -82,7 +121,7 @@ const Dashboard = () => {
                   Products
                 </button>
               </li>
-              {userRole !== 'admin' && (
+              {!isAdmin && (
                 <li className="nav-item">
                   <button
                     className={`btn nav-link ${currentView === 'cart' ? 'active' : ''}`}
@@ -100,19 +139,29 @@ const Dashboard = () => {
                   Orders
                 </button>
               </li>
-              {userRole !== 'admin' && (
+              {isAdmin && (
                 <li className="nav-item">
                   <button
-                    className={`btn nav-link ${currentView === 'wallet' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('wallet')}
+                    className={`btn nav-link ${currentView === 'stock' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('stock')}
                   >
-                    Wallet
+                    Stock
+                  </button>
+                </li>
+              )}
+              {isAdmin && (
+                <li className="nav-item">
+                  <button
+                    className={`btn nav-link ${currentView === 'employees' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('employees')}
+                  >
+                    Employees
                   </button>
                 </li>
               )}
               <li className="nav-item">
                 <span className="navbar-text text-light me-3">
-                  Role: {userRole || 'unknown'}
+                  {session?.name ? `${session.name} · ` : ''}Role: {userRole || 'unknown'}
                 </span>
               </li>
               <li className="nav-item">
@@ -128,13 +177,15 @@ const Dashboard = () => {
         </div>
       </nav>
 
-      {currentView === 'list' ? (
-        <ProductList onEdit={handleEdit} canManageProducts={userRole === 'admin'} />
+      {currentView === 'overview' ? (
+        <AdminOverview onNavigate={handleViewChange} />
+      ) : currentView === 'list' ? (
+        <ProductList onEdit={handleEdit} canManageProducts={canManageProducts} />
       ) : currentView === 'form' ? (
         <ProductForm
           key={editingProduct?.id || 'new'}
           product={editingProduct}
-          canManageProducts={userRole === 'admin'}
+          canManageProducts={canManageProducts}
           onSave={handleSave}
           onCancel={handleCancel}
         />
@@ -142,8 +193,10 @@ const Dashboard = () => {
         <Cart onNavigate={handleViewChange} />
       ) : currentView === 'orders' ? (
         <Orders onNavigate={handleViewChange} userRole={userRole} />
-      ) : currentView === 'wallet' ? (
-        <Wallet onNavigate={handleViewChange} />
+      ) : currentView === 'stock' ? (
+        <StockManager />
+      ) : currentView === 'employees' ? (
+        <EmployeeManager />
       ) : null}
     </div>
   );

@@ -1,6 +1,7 @@
 import express from "express";
 import routes from "./routes/routes.js";
 import { ensureProductSchema } from "./product_model/model.js";
+import { ensureAdminPortalSchema } from "./services/admin_portal.js";
 import helmet from "helmet";
 import { globallimiter } from "./middleware/middleware.js";
 const app=express();
@@ -33,6 +34,7 @@ const port = Number(process.env.PORT) || 3001;
 const startServer = async () => {
   try {
     await ensureProductSchema();
+    await ensureAdminPortalSchema();
     app.listen(port,()=>{
         console.log(`running on port ${port}`);
     });

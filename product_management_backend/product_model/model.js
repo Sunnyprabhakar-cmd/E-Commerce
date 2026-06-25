@@ -57,14 +57,14 @@ export const addProduct = async (id,name, price, category,piece ,availability) =
 
     const inserted = await db.query(
         "INSERT INTO products(id,name,price,category,piece,availability) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,name,price,category,piece,availability",
-        [[
- newProduct.id,
- newProduct.name,
- newProduct.price,
- newProduct.category,
- newProduct.piece,
- newProduct.availability
-        ]]
+        [
+            newProduct.id,
+            newProduct.name,
+            newProduct.price,
+            newProduct.category,
+            newProduct.piece,
+            newProduct.availability,
+        ]
     );
     return inserted.rows[0];
 };
