@@ -160,7 +160,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
                   Category: {product.category}<br />
                   Piece:{product.piece}<br />
                   Price: ₹{product.price}<br />
-                  Available: {product.available}
+                  Available: {product.availability}
                 </p>
                 <div className="btn-group w-100">
                   {canManageProducts && (
