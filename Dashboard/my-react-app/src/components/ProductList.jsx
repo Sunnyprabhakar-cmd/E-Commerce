@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
 
+const PAGE_SIZE = 10;
+
 const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -9,26 +11,54 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
   const [toPrice, setToPrice] = useState('');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [activeMode, setActiveMode] = useState('list');
 
-  const fetchProducts = useCallback(async () => {
+  const applyPageResult = (payload) => {
+    const responseData = payload?.data ?? payload;
+    const items = Array.isArray(responseData?.data) ? responseData.data : (Array.isArray(responseData) ? responseData : []);
+    setProducts(items);
+    setCurrentPage(Number(responseData?.page || 1));
+    setTotalPages(Number(responseData?.totalPages || 1));
+  };
+
+  const fetchProducts = useCallback(async (page = 1, mode = activeMode) => {
     try {
-      let url = '/';
-      if (sortOrder) url = `/sort/${sortOrder}`;
-      const response = await api.get(url);
-      console.log('Fetched products:', response.data);
-      setProducts(response.data.data || response.data);
+      setLoading(true);
+      const params = { page, limit: PAGE_SIZE };
+      let response;
+
+      if (mode === 'search' && searchTerm.trim()) {
+        response = await api.post(`/search?page=${page}&limit=${PAGE_SIZE}`, { keyword: searchTerm.trim() });
+      } else if (mode === 'filter' && (fromPrice !== '' || toPrice !== '')) {
+        response = await api.post(`/filter?page=${page}&limit=${PAGE_SIZE}`, {
+          from: fromPrice,
+          to: toPrice
+        });
+      } else if (mode === 'sort' && sortOrder) {
+        response = await api.get(`/sort/${sortOrder}`, { params });
+      } else {
+        response = await api.get('/', { params });
+      }
+
+      applyPageResult(response.data);
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {
       setLoading(false);
     }
-  }, [sortOrder]);
+  }, [activeMode, fromPrice, searchTerm, sortOrder, toPrice]);
 
   const handleSearch = async () => {
-    if (!searchTerm) return fetchProducts();
+    if (!searchTerm.trim()) {
+      setActiveMode('list');
+      return fetchProducts(1, 'list');
+    }
     try {
-      const response = await api.post('/search', { keyword: searchTerm });
-      setProducts(response.data.data || response.data);
+      setActiveMode('search');
+      const response = await api.post(`/search?page=1&limit=${PAGE_SIZE}`, { keyword: searchTerm.trim() });
+      applyPageResult(response.data);
     } catch (error) {
       console.error('Error searching products:', error);
     }
@@ -43,7 +73,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
     try {
       await api.delete('/', { data: { id } });
       setMessage('Product deleted successfully.');
-      fetchProducts();
+      fetchProducts(currentPage, activeMode);
     } catch (error) {
       const apiMessage = error.response?.data?.message || error.response?.data;
       setMessage(typeof apiMessage === 'string' ? apiMessage : 'Error deleting product');
@@ -65,19 +95,45 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
 
   const handleFilter = async () => {
     try {
-      const response = await api.post('/filter', {
+      setActiveMode('filter');
+      const response = await api.post(`/filter?page=1&limit=${PAGE_SIZE}`, {
         from: fromPrice,
         to: toPrice
       });
-      setProducts(response.data.data || response.data);
+      applyPageResult(response.data);
     } catch (error) {
       console.error('Error filtering products:', error);
     }
   };
 
+  const handleSortChange = async (value) => {
+    setSortOrder(value);
+
+    if (!value) {
+      setActiveMode('list');
+      return fetchProducts(1, 'list');
+    }
+
+    setActiveMode('sort');
+    try {
+      const response = await api.get(`/sort/${value}`, { params: { page: 1, limit: PAGE_SIZE } });
+      applyPageResult(response.data);
+    } catch (error) {
+      console.error('Error sorting products:', error);
+    }
+  };
+
+  const goToPage = (page) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages || 1);
+    if (nextPage === currentPage) {
+      return;
+    }
+    fetchProducts(nextPage);
+  };
+
   useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+    fetchProducts(1, 'list');
+  }, []);
 
   if (loading) return <div className="text-center mt-5">Loading...</div>;
 
@@ -135,7 +191,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
           <select
             className="form-select"
             value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
+            onChange={(e) => handleSortChange(e.target.value)}
           >
             <option value="">Sort by Price</option>
             <option value="asc">Low to High</option>
@@ -194,6 +250,30 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-2">
+        <div className="text-muted">
+          Page {currentPage} of {totalPages || 1}
+        </div>
+        <div className="btn-group" role="group" aria-label="Product pagination controls">
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={() => goToPage(currentPage - 1)}
+            disabled={currentPage <= 1}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={() => goToPage(currentPage + 1)}
+            disabled={currentPage >= totalPages}
+          >
+            Next 10
+          </button>
+        </div>
       </div>
     </div>
   );

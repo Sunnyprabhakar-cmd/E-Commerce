@@ -204,7 +204,10 @@ export const sort_by_price=(req,res)=>{
         } else if(sortOrder === 'desc'){
             temp.sort((a,b)=>Number(b.price) - Number(a.price));
         }
-        return res.json(temp);
+        const page=Number(req.query.page)||1;
+        const limit=Number(req.query.limit)||10;
+        const result=paginate(temp,page,limit);
+        return res.json(result);
     };
     return run().catch((err)=>res.status(400).json({message:"some error occured",error:err.message}));
    }catch(err){
