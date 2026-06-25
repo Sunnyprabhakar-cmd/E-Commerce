@@ -326,6 +326,7 @@ export const fetchAllOrders = async () => {
         const orderHistory = await db.query(
             `SELECT
                 o.*, 
+                p.name AS product_name,
                 u.name AS customer_name,
                 u.email AS customer_email,
                 oa.action_type AS last_action_type,
@@ -336,6 +337,7 @@ export const fetchAllOrders = async () => {
                 oa.action_note AS last_action_note,
                 oa.created_at AS last_action_at
             FROM orders o
+            LEFT JOIN products p ON CAST(o.product_id AS TEXT) = CAST(p.id AS TEXT)
             LEFT JOIN users u ON CAST(o.user_id AS TEXT) = CAST(u.id AS TEXT)
             LEFT JOIN LATERAL (
                 SELECT action_type, action_by_user_id, action_by_user_name, action_by_user_phone, action_by_role, action_note, created_at
