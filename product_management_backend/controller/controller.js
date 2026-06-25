@@ -9,7 +9,7 @@ import filter from "../services/fileter.js";
 import update_product from "../services/update_product.js";
 import { paginate } from "../utils/pagination.js";
 import { add_to_cart,cart_info,delete_info_cart,update_cart } from "../cart/cart.js";
-import { placeOrder,cancelOrder,orderDetails,fetchAllOrders } from "../orders/order.js";
+import { placeOrder,cancelOrder,orderDetails,fetchAllOrders,changeOrderStatus,updatePaymentProgress } from "../orders/order.js";
 import {
     balance_check,
     diduct_balance,
@@ -253,11 +253,118 @@ export const cartInfo=async(req,res)=>{
 
 export const addToOrders=async(req,res)=>{
     try{
-        let user_id=req.user.id || req.user.email;
-        let orderItem=await placeOrder(req.body.product_id,user_id,req.body.quantity,req.body.product_price);
+        const user_id = req.user.id || req.user.email;
+        const userName = req.user.name || req.user.username || null;
+        const userPhone = req.user.phone || req.user.mobile || null;
+        const is_paid = typeof req.body.is_paid === 'boolean' ? req.body.is_paid : true;
+        const payment_mode = req.body.payment_mode || null;
+        const payment_reference = req.body.payment_reference || null;
+        const payment_notes = req.body.payment_notes || null;
+        let orderItem = await placeOrder(
+            req.body.product_id,
+            user_id,
+            req.body.quantity,
+            req.body.product_price,
+            is_paid,
+            payment_mode,
+            payment_reference,
+            payment_notes
+        );
         return res.status(200).json(orderItem);
     }catch(err){
         return res.status(400).json({message:"some error occured",error:err});
+    }
+}
+
+export const adminOrderAction = async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.email;
+        const userName = req.user.name || req.user.username || null;
+        const userPhone = req.user.phone || req.user.mobile || null;
+        const userRole = req.user.role || 'admin';
+        const { order_id, action, amount_received, payment_mode, payment_reference, payment_notes } = req.body;
+
+        if (!order_id || !action) {
+            return res.status(400).json({ message: "order_id and action are required" });
+        }
+
+        if (action === 'cancel') {
+            const reply = await cancelOrder(null, null, order_id, userId, userName, userPhone, userRole);
+            if (reply?.message === "order not found") {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+
+            const refundAmount = Number(reply?.refund_amount || 0);
+            if (refundAmount > 0) {
+                const targetUserId = reply?.user_id || userId;
+                const creditInfo = await add_balance(
+                    targetUserId,
+                    refundAmount,
+                    "credit",
+                    "order_cancel",
+                    `Refund for cancelled order ${reply.order_id}`,
+                    reply.order_id
+                );
+
+                if (!creditInfo.ok) {
+                    return res.status(400).json({
+                        message: "Order cancelled but wallet refund failed",
+                        cancel: reply,
+                        refund: creditInfo,
+                    });
+                }
+
+                return res.status(200).json({
+                    ...reply,
+                    wallet_balance: creditInfo.balance,
+                    refund_status: "credited",
+                });
+            }
+
+            return res.status(200).json(reply);
+        }
+
+        if (action === 'accept') {
+            const reply = await changeOrderStatus(order_id, 'accepted', userId, userName, userPhone, userRole, 'Order accepted by admin');
+            if (reply?.message === 'order not found') {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+            return res.status(200).json(reply);
+        }
+
+        if (action === 'collect_payment') {
+            if (!amount_received || Number(amount_received) <= 0) {
+                return res.status(400).json({ message: "amount_received is required for collect_payment" });
+            }
+            const reply = await updatePaymentProgress(
+                order_id,
+                Number(amount_received),
+                payment_mode || 'cash',
+                payment_reference || null,
+                payment_notes || `Partial payment of ${amount_received}`,
+                userId,
+                userName,
+                userPhone,
+                userRole
+            );
+            if (reply?.message === 'order not found') {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+            return res.status(200).json(reply);
+        }
+
+        return res.status(400).json({ message: "Unsupported action" });
+    } catch (err) {
+        return res.status(400).json({ message: "some error occured", error: err });
     }
 }
 
