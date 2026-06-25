@@ -9,6 +9,9 @@ const Cart = ({ onNavigate }) => {
   const [selectedOrderItem, setSelectedOrderItem] = useState(null);
   const [isOrderModalOpen, setOrderModalOpen] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState('wallet');
+  const [checkoutError, setCheckoutError] = useState('');
 
   const fetchWalletBalance = async () => {
     try {
@@ -156,51 +159,95 @@ const Cart = ({ onNavigate }) => {
     }
   };
 
-  const handleCheckout = async () => {
+  const generateOrderGroupId = () => {
+    return `group-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  };
+
+  const handleCheckout = () => {
     if (cartItems.length === 0) {
       setMessage('Your cart is empty');
       return;
     }
-    try {
-      const totalOrderCost = cartItems.reduce(
-        (sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)),
-        0
-      );
+    setCheckoutError('');
+    setCheckoutPaymentMethod('wallet');
+    setCheckoutModalOpen(true);
+  };
 
-      if (walletBalance < totalOrderCost) {
-        setMessage('Insufficient wallet balance for checkout. Please add funds in Wallet.');
-        return;
+  const closeCheckoutDialog = () => {
+    setCheckoutError('');
+    setCheckoutModalOpen(false);
+  };
+
+  const submitCheckout = async () => {
+    if (cartItems.length === 0) {
+      setCheckoutError('Your cart is empty');
+      return;
+    }
+
+    const totalOrderCost = cartItems.reduce(
+      (sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)),
+      0
+    );
+
+    if (checkoutPaymentMethod === 'wallet' && walletBalance < totalOrderCost) {
+      setCheckoutError('Insufficient wallet balance for wallet payment.');
+      return;
+    }
+
+    const orderGroupId = generateOrderGroupId();
+
+    try {
+      if (checkoutPaymentMethod === 'wallet') {
+        await api.post('/afterOrder', {
+          price: totalOrderCost,
+          type: 'debit',
+          reference_type: 'order',
+          message: `Payment for order group ${orderGroupId}`,
+          order_id: null,
+        });
       }
 
       for (const item of cartItems) {
-        const orderCost = Number(item.price || 0) * Number(item.quantity || 0);
-
-        await api.post('/afterOrder', {
-          price: orderCost,
-          type: 'debit',
-          reference_type: 'order',
-          message: `Payment for product ${item.product_id}`,
-          order_id: null
-        });
-
+        const isPaid = checkoutPaymentMethod === 'wallet';
         await api.post('/placeOrder', {
           product_id: item.product_id,
           quantity: item.quantity,
           product_price: item.price,
-          is_paid: true,
-          payment_mode: 'wallet',
-          payment_reference: `wallet-payment-${item.product_id}`,
-          payment_notes: 'Paid from wallet during checkout',
+          is_paid: isPaid,
+          payment_mode: isPaid ? 'wallet' : 'cash',
+          payment_reference: isPaid ? `wallet-payment-${orderGroupId}` : null,
+          payment_notes: isPaid
+            ? 'Paid from wallet during checkout'
+            : 'Deferred payment placed at checkout',
+          order_group_id: orderGroupId,
         });
-
         await api.post('/deleteProductFromCart', { product_id: item.product_id });
       }
-      setMessage('Checkout complete! All cart items were ordered.');
+
+      setMessage(
+        checkoutPaymentMethod === 'wallet'
+          ? 'Checkout complete! All cart items were ordered and paid.'
+          : 'Checkout complete! All cart items were ordered with deferred payment.'
+      );
+      closeCheckoutDialog();
       fetchCartItems();
       onNavigate && onNavigate('orders');
     } catch (error) {
+      if (checkoutPaymentMethod === 'wallet') {
+        try {
+          await api.post('/balanceCredit', {
+            price: totalOrderCost,
+            type: 'credit',
+            reference_type: 'order_refund',
+            message: `Refund for failed checkout ${orderGroupId}`,
+            order_id: null,
+          });
+        } catch {
+          // ignore refund failure
+        }
+      }
       const errorMsg = error.response?.data?.message || 'Checkout failed';
-      setMessage(errorMsg);
+      setCheckoutError(errorMsg);
       fetchWalletBalance();
     }
   };
@@ -339,6 +386,43 @@ const Cart = ({ onNavigate }) => {
                     </button>
                     <button type="button" className="btn btn-primary" onClick={() => handlePlaceOrder(selectedOrderItem, true)}>
                       Pay Now
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isCheckoutModalOpen && (
+            <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+              <div className="modal-dialog">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">Checkout</h5>
+                    <button type="button" className="btn-close" onClick={closeCheckoutDialog}></button>
+                  </div>
+                  <div className="modal-body">
+                    <p>Total order amount: <strong>${totalPrice.toFixed(2)}</strong></p>
+                    <p>Wallet balance: <strong>${walletBalance.toFixed(2)}</strong></p>
+                    <div className="mb-3">
+                      <label className="form-label">Payment option</label>
+                      <select
+                        className="form-select"
+                        value={checkoutPaymentMethod}
+                        onChange={(e) => setCheckoutPaymentMethod(e.target.value)}
+                      >
+                        <option value="wallet">Pay with Wallet</option>
+                        <option value="cash">Cash / Deferred Payment</option>
+                      </select>
+                    </div>
+                    {checkoutError && <div className="alert alert-danger">{checkoutError}</div>}
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={closeCheckoutDialog}>
+                      Cancel
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={submitCheckout}>
+                      Confirm Checkout
                     </button>
                   </div>
                 </div>

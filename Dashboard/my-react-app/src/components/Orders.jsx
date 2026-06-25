@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 
 const Orders = ({ onNavigate, userRole }) => {
@@ -11,6 +11,7 @@ const Orders = ({ onNavigate, userRole }) => {
   const [sortDirection, setSortDirection] = useState('desc');
   const [paymentInputs, setPaymentInputs] = useState({});
   const [actionSelections, setActionSelections] = useState({});
+  const [expandedGroups, setExpandedGroups] = useState({});
 
   const adminView = userRole === 'admin';
   const fetchEndpoint = adminView ? '/orders' : '/orderDetail';
@@ -170,6 +171,7 @@ const Orders = ({ onNavigate, userRole }) => {
 
   const exportOrdersToCSV = () => {
     const headers = [
+      'Order Group ID',
       'Order ID',
       'Product Name',
       'Product ID',
@@ -188,6 +190,7 @@ const Orders = ({ onNavigate, userRole }) => {
     const rows = filteredOrders.map((order) => {
       const displayRemaining = getDisplayRemaining(order);
       return [ 
+        order.order_group_id || order.order_id || order.tracking_id || '',
         order.order_id || order.tracking_id || '',
         order.product_name || '',
         order.product_id || '',
@@ -213,6 +216,7 @@ const Orders = ({ onNavigate, userRole }) => {
       const displayRemaining = getDisplayRemaining(order);
       return `
         <tr>
+          <td>${order.order_group_id || order.order_id || order.tracking_id || ''}</td>
           <td>${order.order_id || order.tracking_id || ''}</td>
           <td>${order.product_name || ''}</td>
           <td>${order.product_id || ''}</td>
@@ -290,6 +294,59 @@ const Orders = ({ onNavigate, userRole }) => {
         return sortDirection === 'asc' ? compare : -compare;
       });
   }, [orders, statusFilter, customerFilter, sortField, sortDirection]);
+
+  const orderGroups = useMemo(() => {
+    const groups = {};
+
+    filteredOrders.forEach((order) => {
+      const groupId = order.order_group_id || String(order.order_id || order.tracking_id || `single-${Math.random()}`);
+      if (!groups[groupId]) {
+        groups[groupId] = {
+          groupId,
+          orders: [],
+          totalCost: 0,
+          totalPaid: 0,
+          totalRemaining: 0,
+          totalQuantity: 0,
+          paymentModes: new Set(),
+          customerName: order.customer_name || order.customer_email || 'N/A',
+          customerId: order.user_id || order.customer_id || 'N/A',
+          lastActionBy: order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A',
+        };
+      }
+
+      groups[groupId].orders.push(order);
+      groups[groupId].totalCost += Number(order.total_cost || 0);
+      groups[groupId].totalPaid += Number(order.amount_paid || 0);
+      groups[groupId].totalRemaining += getDisplayRemaining(order);
+      groups[groupId].totalQuantity += Number(order.quantity || 0);
+      if (order.payment_mode) {
+        groups[groupId].paymentModes.add(order.payment_mode);
+      }
+    });
+
+    return Object.values(groups).map((group) => {
+      const allPaid = group.orders.every((order) => Number(order.amount_paid || 0) >= Number(order.total_cost || 0) && order.status !== 'cancelled');
+      const anyPaid = group.orders.some((order) => Number(order.amount_paid || 0) > 0);
+      const allCancelled = group.orders.every((order) => order.status === 'cancelled');
+      const paymentStatus = allCancelled
+        ? 'Cancelled'
+        : allPaid
+          ? 'Paid'
+          : anyPaid
+            ? 'Partial Paid'
+            : 'Unpaid';
+      return {
+        ...group,
+        paymentStatus,
+        paymentMode: group.paymentModes.size === 1 ? [...group.paymentModes][0] : (group.paymentModes.size > 1 ? 'Multiple' : 'N/A'),
+      };
+    });
+  }, [filteredOrders]);
+
+  const toggleGroupExpansion = (groupId) => {
+    setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
 
   if (loading) {
     return <div className="text-center mt-5">Loading orders...</div>;
@@ -384,103 +441,135 @@ const Orders = ({ onNavigate, userRole }) => {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((order) => {
-                const rowKey = getOrderKey(order);
-                const id = order.order_id || order.tracking_id || 'N/A';
-                const customerName = order.customer_name || order.customer_email || 'N/A';
-                const customerId = order.user_id || order.customer_id || 'N/A';
-                const paymentStatus = getPaymentStatus(order);
-                const displayRemaining = getDisplayRemaining(order);
-                const displayPaid = Number(order.amount_paid || 0);
+              {orderGroups.map((group) => {
+                const groupStatus = group.orders.length > 1 ? 'Grouped' : group.orders[0]?.status || 'N/A';
 
                 return (
-                  <tr key={`${id}-${order.product_id || 'no-product'}`}>
-                    <td>{id}</td>
-                    {adminView && <td>{customerName}</td>}
-                    {adminView && <td>{customerId}</td>}
-                    <td>{order.product_name || 'N/A'}</td>
-                    <td>{order.product_id}</td>
-                    <td>{order.quantity}</td>
-                    <td>${Number(order.product_price || 0).toFixed(2)}</td>
-                    <td>${Number(order.total_cost || 0).toFixed(2)}</td>
-                    <td>{order.status || 'N/A'}</td>
-                    {adminView && <td>{paymentStatus}</td>}
-                    {adminView && <td>${displayPaid.toFixed(2)}</td>}
-                    {adminView && <td>${displayRemaining.toFixed(2)}</td>}
-                    {adminView && <td>{order.payment_mode || (displayRemaining > 0 ? 'unpaid' : 'N/A')}</td>}
-                    {adminView && <td>{order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</td>}
-                    {adminView && (
-                      <td>
-                        <div className="d-flex flex-column gap-2">
-                          <div className="d-flex gap-1">
-                            <select
-                              className="form-select form-select-sm"
-                              style={{ minWidth: '120px' }}
-                              value={actionSelections[rowKey] || ''}
-                              onChange={(e) => setActionSelection(rowKey, e.target.value)}
-                            >
-                              <option value="">Action...</option>
-                              <option value="accept">Accept</option>
-                              <option value="cancel">Cancel</option>
-                            </select>
-                            <button
-                              className="btn btn-sm btn-outline-primary"
-                              onClick={() => handleApplyAction(order)}
-                            >
-                              Apply
-                            </button>
-                          </div>
-                          {displayRemaining > 0 && order.status !== 'cancelled' && (
-                            <div className="d-flex gap-1 align-items-center flex-wrap">
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                className="form-control form-control-sm"
-                                style={{ width: '90px' }}
-                                placeholder="Paid"
-                                value={paymentInputs[rowKey]?.amount || ''}
-                                onChange={(e) => setPaymentInput(rowKey, 'amount', e.target.value)}
-                              />
-                              <select
-                                className="form-select form-select-sm"
-                                style={{ width: '110px' }}
-                                value={paymentInputs[rowKey]?.mode || 'cash'}
-                                onChange={(e) => setPaymentInput(rowKey, 'mode', e.target.value)}
-                              >
-                                <option value="cash">Cash</option>
-                                <option value="wallet">Wallet</option>
-                                <option value="upi">UPI</option>
-                                <option value="card">Card</option>
-                              </select>
-                              <button
-                                className="btn btn-sm btn-primary"
-                                onClick={() => handleCollectPayment(order)}
-                              >
-                                Record
-                              </button>
-                            </div>
-                          )}
+                  <Fragment key={group.groupId}>
+                    <tr className="table-active">
+                      <td>{group.groupId}</td>
+                      {adminView && <td>{group.customerName}</td>}
+                      {adminView && <td>{group.customerId}</td>}
+                      <td>{group.orders.length} item{group.orders.length > 1 ? 's' : ''}</td>
+                      <td>—</td>
+                      <td>{group.totalQuantity}</td>
+                      <td>—</td>
+                      <td>${group.totalCost.toFixed(2)}</td>
+                      <td>{groupStatus}</td>
+                      {adminView && <td>{group.paymentStatus}</td>}
+                      {adminView && <td>${group.totalPaid.toFixed(2)}</td>}
+                      {adminView && <td>${group.totalRemaining.toFixed(2)}</td>}
+                      {adminView && <td>{group.paymentMode}</td>}
+                      {adminView && <td>{group.lastActionBy}</td>}
+                      {adminView && (
+                        <td>
                           <button
                             className="btn btn-sm btn-outline-secondary"
-                            onClick={() => handleGenerateInvoice(order)}
+                            onClick={() => toggleGroupExpansion(group.groupId)}
                           >
-                            Invoice
+                            {expandedGroups[group.groupId] ? 'Hide items' : 'Show items'}
                           </button>
-                        </div>
-                      </td>
-                    )}
-                    {!adminView && (
-                      <td>
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => handleCancelOrder(order)}
-                        >
-                          Cancel
-                        </button>
-                      </td>
-                    )}
-                  </tr>
+                        </td>
+                      )}
+                      {!adminView && <td />}
+                    </tr>
+                    {expandedGroups[group.groupId] && group.orders.map((order) => {
+                      const rowKey = getOrderKey(order);
+                      const displayRemaining = getDisplayRemaining(order);
+                      const displayPaid = Number(order.amount_paid || 0);
+                      const orderPaymentStatus = getPaymentStatus(order);
+
+                      return (
+                        <tr key={`${order.groupId || order.order_id}-${order.product_id || 'no-product'}`}>
+                          <td>{order.order_id || order.tracking_id || 'N/A'}</td>
+                          {adminView && <td>{order.customer_name || order.customer_email || 'N/A'}</td>}
+                          {adminView && <td>{order.user_id || order.customer_id || 'N/A'}</td>}
+                          <td>{order.product_name || 'N/A'}</td>
+                          <td>{order.product_id}</td>
+                          <td>{order.quantity}</td>
+                          <td>${Number(order.product_price || 0).toFixed(2)}</td>
+                          <td>${Number(order.total_cost || 0).toFixed(2)}</td>
+                          <td>{order.status || 'N/A'}</td>
+                          {adminView && <td>{orderPaymentStatus}</td>}
+                          {adminView && <td>${displayPaid.toFixed(2)}</td>}
+                          {adminView && <td>${displayRemaining.toFixed(2)}</td>}
+                          {adminView && <td>{order.payment_mode || (displayRemaining > 0 ? 'unpaid' : 'N/A')}</td>}
+                          {adminView && <td>{order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</td>}
+                          {adminView && (
+                            <td>
+                              <div className="d-flex flex-column gap-2">
+                                <div className="d-flex gap-1">
+                                  <select
+                                    className="form-select form-select-sm"
+                                    style={{ minWidth: '120px' }}
+                                    value={actionSelections[rowKey] || ''}
+                                    onChange={(e) => setActionSelection(rowKey, e.target.value)}
+                                  >
+                                    <option value="">Action...</option>
+                                    <option value="accept">Accept</option>
+                                    <option value="cancel">Cancel</option>
+                                  </select>
+                                  <button
+                                    className="btn btn-sm btn-outline-primary"
+                                    onClick={() => handleApplyAction(order)}
+                                  >
+                                    Apply
+                                  </button>
+                                </div>
+                                {displayRemaining > 0 && order.status !== 'cancelled' && (
+                                  <div className="d-flex gap-1 align-items-center flex-wrap">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      className="form-control form-control-sm"
+                                      style={{ width: '90px' }}
+                                      placeholder="Paid"
+                                      value={paymentInputs[rowKey]?.amount || ''}
+                                      onChange={(e) => setPaymentInput(rowKey, 'amount', e.target.value)}
+                                    />
+                                    <select
+                                      className="form-select form-select-sm"
+                                      style={{ width: '110px' }}
+                                      value={paymentInputs[rowKey]?.mode || 'cash'}
+                                      onChange={(e) => setPaymentInput(rowKey, 'mode', e.target.value)}
+                                    >
+                                      <option value="cash">Cash</option>
+                                      <option value="wallet">Wallet</option>
+                                      <option value="upi">UPI</option>
+                                      <option value="card">Card</option>
+                                    </select>
+                                    <button
+                                      className="btn btn-sm btn-primary"
+                                      onClick={() => handleCollectPayment(order)}
+                                    >
+                                      Record
+                                    </button>
+                                  </div>
+                                )}
+                                <button
+                                  className="btn btn-sm btn-outline-secondary"
+                                  onClick={() => handleGenerateInvoice(order)}
+                                >
+                                  Invoice
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                          {!adminView && (
+                            <td>
+                              <button
+                                className="btn btn-sm btn-danger"
+                                onClick={() => handleCancelOrder(order)}
+                              >
+                                Cancel
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
                 );
               })}
             </tbody>
