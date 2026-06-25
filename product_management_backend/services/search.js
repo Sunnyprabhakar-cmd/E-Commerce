@@ -12,11 +12,11 @@ const search = async (keyword) => {
         );
 
         if (result.rows.length === 0) {
-            return { message: "no product available" };
+            return [];
         }
         return result.rows;
     } catch (err) {
-        return { message: err.message };
+        return { error: true, message: err.message };
     }
 };
 

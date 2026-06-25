@@ -7,7 +7,7 @@ const ensureCartSchema = async () => {
         return;
     }
     // product IDs in this app are UUID strings; ensure DB column can store them.
-    await db.query("ALTER TABLE cart_items ALTER COLUMN product_id TYPE text USING product_id::text");
+    await db.query("ALTER TABLE cart_items ALTER COLUMN product_id TYPE INTEGER USING product_id::INTEGER");
     isCartSchemaReady = true;
 };
 
@@ -24,7 +24,7 @@ export const add_to_cart=async(user_id,product_id,quantity)=>{
             return {ok:false,message:"Invalid user"};
         }
         const qty = Number(quantity) || 1;
-        const pid = String(product_id);
+        const pid = Number(product_id);
         const existingProduct = await db.query(
             "SELECT id,name,price,category FROM products WHERE id=$1 LIMIT 1",
             [pid]
@@ -82,7 +82,7 @@ export const delete_info_cart=async(user_id,product_id)=>{
         if(!user_id){
             return ({ok:false,message:"Invalid user"});
         }
-        const pid = String(product_id);
+        const pid = Number(product_id);
         await db.query("DELETE FROM cart_items where product_id=$1 AND user_id=$2",[pid,user_id]);
         return {ok:true,message:"Product deleted from cart successfully"};
     }catch(err){
@@ -100,7 +100,7 @@ export const update_cart=async(user_id,product_id,operation)=>{
             return ({ok:false,message:"Invalid user"});
         }
 
-        const pid = String(product_id);
+        const pid = Number(product_id);
         const cartItems=await db.query("SELECT quantity FROM cart_items WHERE product_id=$1 AND user_id=$2",[pid,user_id]);
         
         if(cartItems.rows.length === 0){

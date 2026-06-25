@@ -8,6 +8,7 @@ const ensureOrderSchema = async () => {
     }
     // Existing DB uses integer product_id while app product IDs are UUID strings.
     await db.query("ALTER TABLE orders ALTER COLUMN product_id TYPE text USING product_id::text");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT TRUE");
     isOrderSchemaReady = true;
 };
 
@@ -100,3 +101,21 @@ export const orderDetails=async(user_id)=>{
         return ({message:"error occured while fetching order details",error:err.message});
     }
 }
+
+export const fetchAllOrders = async () => {
+    try {
+        await ensureOrderSchema();
+        const orderHistory = await db.query(
+            `SELECT
+                o.*,
+                u.name AS customer_name,
+                u.email AS customer_email
+            FROM orders o
+            LEFT JOIN users u ON CAST(o.user_id AS TEXT) = CAST(u.id AS TEXT)
+            ORDER BY o.order_id DESC`
+        );
+        return ({message:"admin order details fetched",orders:orderHistory.rows || []});
+    } catch (err) {
+        return ({message:"error occured while fetching admin order details",error:err.message});
+    }
+};

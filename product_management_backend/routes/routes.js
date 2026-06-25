@@ -2,7 +2,7 @@ import express from "express";
 import {createProduct, getAllProduct,deleteProduct, 
     getProductById,searchbar, sort_by_price, filterBasedOnPrice,
     addProductIntoCart,deleteProductIntoCart,updateProductIntoCart,
-    cartInfo,addToOrders,removeOrder,orderDetail,
+    cartInfo,addToOrders,removeOrder,orderDetail,adminOrderDetail,
     avlBalance,
     balance_sub,wallet_details,add_balancee} 
     from "../controller/controller.js";
@@ -29,6 +29,7 @@ router.post("/deleteProductFromCart",auth,deleteProductIntoCart);
 router.post("/updateCart",auth,updateProductIntoCart);
 router.post("/placeOrder",auth,addToOrders);
 router.post("/cancelOrder",auth,removeOrder);
+router.get("/orders",auth,isAdmin,adminOrderDetail);
 router.get("/orderDetail",auth,orderDetail);
 router.get("/walletDetail",auth,wallet_details);
 router.get("/avlBalance",auth,avlBalance);

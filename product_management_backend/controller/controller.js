@@ -9,7 +9,7 @@ import filter from "../services/fileter.js";
 import update_product from "../services/update_product.js";
 import { paginate } from "../utils/pagination.js";
 import { add_to_cart,cart_info,delete_info_cart,update_cart } from "../cart/cart.js";
-import { placeOrder,cancelOrder,orderDetails } from "../orders/order.js";
+import { placeOrder,cancelOrder,orderDetails,fetchAllOrders } from "../orders/order.js";
 import {
     balance_check,
     diduct_balance,
@@ -123,8 +123,8 @@ export const searchbar=(req,res)=>{
     const limit=Number(req.query.limit)||10;
     const run = async () => {
         const result=await search(req.body.keyword);
-        if (result.message) {
-            return res.status(404).json(result);
+        if (!Array.isArray(result)) {
+            return res.status(400).json(result);
         }
         const paginatedResult=paginate(result,page,limit);
         return res.json(paginatedResult);
@@ -308,6 +308,15 @@ export const removeOrder=async(req,res)=>{
 export const orderDetail=async(req,res)=>{
     try{
         let reply=await orderDetails(req.user.id || req.user.email);
+        return res.status(200).json(reply);
+    }catch(err){
+        return res.status(400).json({message:"some error occured",error:err});
+    }
+}
+
+export const adminOrderDetail=async(req,res)=>{
+    try{
+        let reply=await fetchAllOrders();
         return res.status(200).json(reply);
     }catch(err){
         return res.status(400).json({message:"some error occured",error:err});
