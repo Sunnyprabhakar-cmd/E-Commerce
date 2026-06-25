@@ -15,6 +15,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
       let url = '/';
       if (sortOrder) url = `/sort/${sortOrder}`;
       const response = await api.get(url);
+      console.log('Fetched products:', response.data);
       setProducts(response.data.data || response.data);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -160,7 +161,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
                   Category: {product.category}<br />
                   Piece:{product.piece}<br />
                   Price: ₹{product.price}<br />
-                  Available: {product.availability}
+                  Available: {product.availability?"Yes":"No"}
                 </p>
                 <div className="btn-group w-100">
                   {canManageProducts && (
