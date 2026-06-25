@@ -1,15 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 
-const Orders = ({ onNavigate }) => {
+const Orders = ({ onNavigate, userRole }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [sortField, setSortField] = useState('order_id');
+  const [sortDirection, setSortDirection] = useState('desc');
+
+  const adminView = userRole === 'admin';
+  const fetchEndpoint = adminView ? '/orders' : '/orderDetail';
 
   const fetchOrders = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/orderDetail');
+      const response = await api.get(fetchEndpoint);
       const items = Array.isArray(response.data?.orders) ? response.data.orders : [];
       setOrders(items);
     } catch (error) {
@@ -37,7 +44,54 @@ const Orders = ({ onNavigate }) => {
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [userRole]);
+
+  const filteredOrders = useMemo(() => {
+    const normalizedCustomerFilter = customerFilter.trim().toLowerCase();
+
+    return [...orders]
+      .filter((order) => {
+        if (statusFilter !== 'all') {
+          const isPaid = order.is_paid !== undefined ? Boolean(order.is_paid) : true;
+          if (statusFilter === 'paid' && !isPaid) return false;
+          if (statusFilter === 'unpaid' && isPaid) return false;
+        }
+
+        if (!normalizedCustomerFilter) {
+          return true;
+        }
+
+        const candidate = [
+          order.customer_name,
+          order.customer_email,
+          order.user_id,
+          order.product_id,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        return candidate.includes(normalizedCustomerFilter);
+      })
+      .sort((a, b) => {
+        let left = '';
+        let right = '';
+
+        if (sortField === 'customer_name') {
+          left = String(a.customer_name || a.customer_email || '');
+          right = String(b.customer_name || b.customer_email || '');
+        } else if (sortField === 'customer_id') {
+          left = String(a.user_id || a.customer_id || '');
+          right = String(b.user_id || b.customer_id || '');
+        } else {
+          left = String(a.order_id || a.tracking_id || '0');
+          right = String(b.order_id || b.tracking_id || '0');
+        }
+
+        const compare = left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+        return sortDirection === 'asc' ? compare : -compare;
+      });
+  }, [orders, statusFilter, customerFilter, sortField, sortDirection]);
 
   if (loading) {
     return <div className="text-center mt-5">Loading orders...</div>;
@@ -45,51 +99,104 @@ const Orders = ({ onNavigate }) => {
 
   return (
     <div className="container mt-5">
-      <div className="mb-3 d-flex gap-2">
+      <div className="mb-3 d-flex flex-wrap gap-2">
         <button className="btn btn-secondary" onClick={() => onNavigate && onNavigate('list')}>
           Back to Products
         </button>
         <button className="btn btn-outline-primary" onClick={fetchOrders}>
           Refresh
         </button>
+        {adminView && (
+          <>
+            <select
+              className="form-select"
+              style={{ maxWidth: '180px' }}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All payments</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Unpaid</option>
+            </select>
+            <select
+              className="form-select"
+              style={{ maxWidth: '220px' }}
+              value={sortField}
+              onChange={(e) => setSortField(e.target.value)}
+            >
+              <option value="order_id">Order ID</option>
+              <option value="customer_id">Customer ID</option>
+              <option value="customer_name">Customer name</option>
+            </select>
+            <button
+              className="btn btn-outline-secondary"
+              onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+            >
+              Sort {sortDirection === 'asc' ? '↑' : '↓'}
+            </button>
+            <input
+              type="text"
+              className="form-control"
+              style={{ minWidth: '220px' }}
+              placeholder="Filter by customer id or name"
+              value={customerFilter}
+              onChange={(e) => setCustomerFilter(e.target.value)}
+            />
+          </>
+        )}
       </div>
 
-      <h2>My Orders</h2>
+      <h2>{adminView ? 'All Orders' : 'My Orders'}</h2>
       {message && <div className="alert alert-info">{message}</div>}
 
-      {orders.length === 0 ? (
+      {filteredOrders.length === 0 ? (
         <div className="alert alert-warning">No orders found</div>
       ) : (
         <div className="table-responsive">
           <table className="table table-striped">
             <thead>
               <tr>
-                <th>Tracking ID</th>
+                <th>Order ID</th>
+                {adminView && <th>Customer</th>}
+                {adminView && <th>Customer ID</th>}
                 <th>Product ID</th>
                 <th>Quantity</th>
                 <th>Unit Price</th>
                 <th>Total Cost</th>
-                <th>Actions</th>
+                {adminView && <th>Paid</th>}
+                {!adminView && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => (
-                <tr key={`${order.tracking_id || order.order_id || order.product_id}-${order.product_id}`}>
-                  <td>{order.tracking_id || order.order_id || 'N/A'}</td>
-                  <td>{order.product_id}</td>
-                  <td>{order.quantity}</td>
-                  <td>${Number(order.product_price || 0).toFixed(2)}</td>
-                  <td>${Number(order.total_cost || 0).toFixed(2)}</td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={() => handleCancelOrder(order)}
-                    >
-                      Cancel
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {filteredOrders.map((order) => {
+                const id = order.order_id || order.tracking_id || 'N/A';
+                const customerName = order.customer_name || order.customer_email || 'N/A';
+                const customerId = order.user_id || order.customer_id || 'N/A';
+                const isPaid = order.is_paid !== undefined ? Boolean(order.is_paid) : true;
+
+                return (
+                  <tr key={`${id}-${order.product_id || 'no-product'}`}>
+                    <td>{id}</td>
+                    {adminView && <td>{customerName}</td>}
+                    {adminView && <td>{customerId}</td>}
+                    <td>{order.product_id}</td>
+                    <td>{order.quantity}</td>
+                    <td>${Number(order.product_price || 0).toFixed(2)}</td>
+                    <td>${Number(order.total_cost || 0).toFixed(2)}</td>
+                    {adminView && <td>{isPaid ? 'Paid' : 'Unpaid'}</td>}
+                    {!adminView && (
+                      <td>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleCancelOrder(order)}
+                        >
+                          Cancel
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

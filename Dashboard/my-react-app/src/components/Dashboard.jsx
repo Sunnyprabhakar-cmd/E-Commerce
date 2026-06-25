@@ -92,16 +92,14 @@ const Dashboard = () => {
                   </button>
                 </li>
               )}
-              {userRole !== 'admin' && (
-                <li className="nav-item">
-                  <button
-                    className={`btn nav-link ${currentView === 'orders' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('orders')}
-                  >
-                    Orders
-                  </button>
-                </li>
-              )}
+              <li className="nav-item">
+                <button
+                  className={`btn nav-link ${currentView === 'orders' ? 'active' : ''}`}
+                  onClick={() => handleViewChange('orders')}
+                >
+                  Orders
+                </button>
+              </li>
               {userRole !== 'admin' && (
                 <li className="nav-item">
                   <button
@@ -143,7 +141,7 @@ const Dashboard = () => {
       ) : currentView === 'cart' ? (
         <Cart onNavigate={handleViewChange} />
       ) : currentView === 'orders' ? (
-        <Orders onNavigate={handleViewChange} />
+        <Orders onNavigate={handleViewChange} userRole={userRole} />
       ) : currentView === 'wallet' ? (
         <Wallet onNavigate={handleViewChange} />
       ) : null}
