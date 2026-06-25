@@ -44,6 +44,23 @@ const Orders = ({ onNavigate, userRole }) => {
     }
   };
 
+  const getOrderKey = (order) => order.order_id || order.tracking_id || `${order.product_id}-${order.user_id}`;
+
+  const getPaymentStatus = (order) => {
+    if (order.status === 'cancelled') {
+      return 'Cancelled';
+    }
+    const total = Number(order.total_cost || 0);
+    const paid = Number(order.amount_paid || 0);
+    if (paid <= 0) {
+      return 'Unpaid';
+    }
+    if (paid >= total) {
+      return 'Paid';
+    }
+    return 'Partial Paid';
+  };
+
   const handleAdminOrderAction = async (order, action) => {
     try {
       const response = await api.post('/admin/orderAction', {
@@ -76,7 +93,8 @@ const Orders = ({ onNavigate, userRole }) => {
   };
 
   const handleApplyAction = async (order) => {
-    const selection = actionSelections[order.order_id];
+    const key = getOrderKey(order);
+    const selection = actionSelections[key];
     if (!selection) {
       setMessage('Select an admin action first');
       return;
@@ -85,32 +103,57 @@ const Orders = ({ onNavigate, userRole }) => {
   };
 
   const handleCollectPayment = async (order) => {
-    const inputs = paymentInputs[order.order_id] || {};
+    const key = getOrderKey(order);
+    const inputs = paymentInputs[key] || {};
     const amount = Number(inputs.amount || 0);
     if (!amount || amount <= 0) {
       setMessage('Enter a valid payment amount');
       return;
     }
-    const response = await api.post('/admin/orderAction', {
-      order_id: order.order_id || order.tracking_id,
-      action: 'collect_payment',
-      amount_received: amount,
-      payment_mode: inputs.mode || 'cash',
-      payment_reference: inputs.reference || null,
-      payment_notes: inputs.notes || `Partial payment for order ${order.order_id}`,
-    });
-    setMessage(response.data?.message || 'Payment updated successfully');
-    setPaymentInputs((prev) => ({ ...prev, [order.order_id]: {} }));
-    fetchOrders();
+    try {
+      const response = await api.post('/admin/orderAction', {
+        order_id: order.order_id || order.tracking_id,
+        action: 'collect_payment',
+        amount_received: amount,
+        payment_mode: inputs.mode || 'cash',
+        payment_reference: inputs.reference || null,
+        payment_notes: inputs.notes || `Partial payment for order ${order.order_id || order.tracking_id}`,
+      });
+      setMessage(response.data?.message || 'Payment updated successfully');
+      setPaymentInputs((prev) => ({ ...prev, [key]: {} }));
+      fetchOrders();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error recording payment';
+      setMessage(errorMsg);
+    }
   };
 
   const getDisplayRemaining = (order) => {
-    const rawRemaining = order.remaining_amount !== undefined
-      ? Number(order.remaining_amount)
-      : Number(order.total_cost || 0);
-    return !Boolean(order.is_paid) && rawRemaining === 0
-      ? Number(order.total_cost || 0)
-      : rawRemaining;
+    const total = Number(order.total_cost || 0);
+    const paid = Number(order.amount_paid || 0);
+    if (order.remaining_amount !== undefined) {
+      return Number(order.remaining_amount);
+    }
+    return Math.max(total - paid, 0);
+  };
+
+  const createInvoiceHtml = (order) => {
+    const paymentStatus = getPaymentStatus(order);
+    const totalCost = Number(order.total_cost || 0).toFixed(2);
+    const amountPaid = Number(order.amount_paid || 0).toFixed(2);
+    const remaining = getDisplayRemaining(order).toFixed(2);
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${order.order_id || order.tracking_id || ''}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{border:1px solid #ddd;padding:10px;text-align:left;}th{background:#f5f5f5;}p{margin:6px 0;}</style></head><body><h1>Invoice</h1><p><strong>Order ID:</strong> ${order.order_id || order.tracking_id || ''}</p><p><strong>Customer:</strong> ${order.customer_name || order.customer_email || 'N/A'}</p><p><strong>Customer ID:</strong> ${order.user_id || order.customer_id || 'N/A'}</p><p><strong>Payment Status:</strong> ${paymentStatus}</p><table><thead><tr><th>Product Name</th><th>Product ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th></tr></thead><tbody><tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${totalCost}</td></tr></tbody></table><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining Amount:</strong> $${remaining}</p><p><strong>Payment Mode:</strong> ${order.payment_mode || 'N/A'}</p><p><strong>Handled By:</strong> ${order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</p><p><strong>Notes:</strong> ${order.payment_notes || 'None'}</p></body></html>`;
+  };
+
+  const handleGenerateInvoice = (order) => {
+    const invoiceWindow = window.open('', '_blank');
+    if (!invoiceWindow) {
+      setMessage('Unable to open invoice window. Check popup settings.');
+      return;
+    }
+    invoiceWindow.document.write(createInvoiceHtml(order));
+    invoiceWindow.document.close();
+    invoiceWindow.focus();
   };
 
   const downloadFile = (filename, content, mimeType) => {
@@ -136,6 +179,7 @@ const Orders = ({ onNavigate, userRole }) => {
       'Unit Price',
       'Total Cost',
       'Status',
+      'Payment Status',
       'Amount Paid',
       'Remaining',
       'Payment Mode',
@@ -153,6 +197,7 @@ const Orders = ({ onNavigate, userRole }) => {
         Number(order.product_price || 0).toFixed(2),
         Number(order.total_cost || 0).toFixed(2),
         order.status || '',
+        getPaymentStatus(order),
         Number(order.amount_paid || 0).toFixed(2),
         displayRemaining.toFixed(2),
         order.payment_mode || '',
@@ -177,53 +222,19 @@ const Orders = ({ onNavigate, userRole }) => {
           <td>${Number(order.product_price || 0).toFixed(2)}</td>
           <td>${Number(order.total_cost || 0).toFixed(2)}</td>
           <td>${order.status || ''}</td>
+          <td>${getPaymentStatus(order)}</td>
           <td>${Number(order.amount_paid || 0).toFixed(2)}</td>
           <td>${displayRemaining.toFixed(2)}</td>
           <td>${order.payment_mode || ''}</td>
           <td>${order.last_action_by_user_name || order.last_action_by_user_phone || ''}</td>
         </tr>`;
     }).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Order Export</title></head><body><table border="1" cellpadding="5" cellspacing="0"><thead><tr><th>Order ID</th><th>Product Name</th><th>Product ID</th><th>Customer</th><th>Customer ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th><th>Status</th><th>Amount Paid</th><th>Remaining</th><th>Payment Mode</th><th>Handled By</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Order Export</title></head><body><table border="1" cellpadding="5" cellspacing="0"><thead><tr><th>Order ID</th><th>Product Name</th><th>Product ID</th><th>Customer</th><th>Customer ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th><th>Status</th><th>Payment Status</th><th>Amount Paid</th><th>Remaining</th><th>Payment Mode</th><th>Handled By</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
     downloadFile('orders.doc', html, 'application/msword');
   };
 
   const printOrders = () => {
     window.print();
-  };
-
-  const setPaymentInput = (orderId, field, value) => {
-    setPaymentInputs((prev) => ({
-      ...prev,
-      [orderId]: {
-        ...prev[orderId],
-        [field]: value,
-      },
-    }));
-  };
-
-  const handleCollectPayment = async (order) => {
-    const inputs = paymentInputs[order.order_id] || {};
-    const amount = Number(inputs.amount || 0);
-    if (!amount || amount <= 0) {
-      setMessage('Enter a valid payment amount');
-      return;
-    }
-    try {
-      const response = await api.post('/admin/orderAction', {
-        order_id: order.order_id || order.tracking_id,
-        action: 'collect_payment',
-        amount_received: amount,
-        payment_mode: inputs.mode || 'cash',
-        payment_reference: inputs.reference || null,
-        payment_notes: inputs.notes || `Partial payment for order ${order.order_id}`,
-      });
-      setMessage(response.data?.message || 'Payment updated successfully');
-      setPaymentInputs((prev) => ({ ...prev, [order.order_id]: {} }));
-      fetchOrders();
-    } catch (error) {
-      const errorMsg = error.response?.data?.message || 'Error recording payment';
-      setMessage(errorMsg);
-    }
   };
 
   useEffect(() => {
@@ -236,9 +247,11 @@ const Orders = ({ onNavigate, userRole }) => {
     return [...orders]
       .filter((order) => {
         if (statusFilter !== 'all') {
-          const isPaid = order.is_paid !== undefined ? Boolean(order.is_paid) : true;
-          if (statusFilter === 'paid' && !isPaid) return false;
-          if (statusFilter === 'unpaid' && isPaid) return false;
+          const paymentStatus = getPaymentStatus(order).toLowerCase().replace(' ', '_');
+          if (statusFilter === 'paid' && paymentStatus !== 'paid') return false;
+          if (statusFilter === 'unpaid' && paymentStatus !== 'unpaid') return false;
+          if (statusFilter === 'partial' && paymentStatus !== 'partial_paid') return false;
+          if (statusFilter === 'cancelled' && paymentStatus !== 'cancelled') return false;
         }
 
         if (!normalizedCustomerFilter) {
@@ -294,7 +307,7 @@ const Orders = ({ onNavigate, userRole }) => {
         {adminView && (
           <>
             <button className="btn btn-outline-success" onClick={exportOrdersToCSV}>
-              Export CSV
+              Export Excel
             </button>
             <button className="btn btn-outline-info" onClick={exportOrdersToDoc}>
               Export Word
@@ -302,7 +315,7 @@ const Orders = ({ onNavigate, userRole }) => {
             <button className="btn btn-outline-secondary" onClick={printOrders}>
               Print / PDF
             </button>
-            <select
+                    <select
               className="form-select"
               style={{ maxWidth: '180px' }}
               value={statusFilter}
@@ -310,7 +323,9 @@ const Orders = ({ onNavigate, userRole }) => {
             >
               <option value="all">All payments</option>
               <option value="paid">Paid</option>
+              <option value="partial">Partial Paid</option>
               <option value="unpaid">Unpaid</option>
+              <option value="cancelled">Cancelled</option>
             </select>
             <select
               className="form-select"
@@ -359,6 +374,7 @@ const Orders = ({ onNavigate, userRole }) => {
                 <th>Unit Price</th>
                 <th>Total Cost</th>
                 <th>Status</th>
+                {adminView && <th>Payment Status</th>}
                 {adminView && <th>Amount Paid</th>}
                 {adminView && <th>Remaining</th>}
                 {adminView && <th>Payment Mode</th>}
@@ -369,15 +385,12 @@ const Orders = ({ onNavigate, userRole }) => {
             </thead>
             <tbody>
               {filteredOrders.map((order) => {
+                const rowKey = getOrderKey(order);
                 const id = order.order_id || order.tracking_id || 'N/A';
                 const customerName = order.customer_name || order.customer_email || 'N/A';
                 const customerId = order.user_id || order.customer_id || 'N/A';
-                const isPaid = order.is_paid !== undefined ? Boolean(order.is_paid) : true;
-                const displayRemaining = order.remaining_amount !== undefined
-                  ? Number(order.remaining_amount)
-                  : isPaid
-                    ? 0
-                    : Number(order.total_cost || 0);
+                const paymentStatus = getPaymentStatus(order);
+                const displayRemaining = getDisplayRemaining(order);
                 const displayPaid = Number(order.amount_paid || 0);
 
                 return (
@@ -391,6 +404,7 @@ const Orders = ({ onNavigate, userRole }) => {
                     <td>${Number(order.product_price || 0).toFixed(2)}</td>
                     <td>${Number(order.total_cost || 0).toFixed(2)}</td>
                     <td>{order.status || 'N/A'}</td>
+                    {adminView && <td>{paymentStatus}</td>}
                     {adminView && <td>${displayPaid.toFixed(2)}</td>}
                     {adminView && <td>${displayRemaining.toFixed(2)}</td>}
                     {adminView && <td>{order.payment_mode || (displayRemaining > 0 ? 'unpaid' : 'N/A')}</td>}
@@ -402,8 +416,8 @@ const Orders = ({ onNavigate, userRole }) => {
                             <select
                               className="form-select form-select-sm"
                               style={{ minWidth: '120px' }}
-                              value={actionSelections[order.order_id] || ''}
-                              onChange={(e) => setActionSelection(order.order_id, e.target.value)}
+                              value={actionSelections[rowKey] || ''}
+                              onChange={(e) => setActionSelection(rowKey, e.target.value)}
                             >
                               <option value="">Action...</option>
                               <option value="accept">Accept</option>
@@ -425,14 +439,14 @@ const Orders = ({ onNavigate, userRole }) => {
                                 className="form-control form-control-sm"
                                 style={{ width: '90px' }}
                                 placeholder="Paid"
-                                value={paymentInputs[order.order_id]?.amount || ''}
-                                onChange={(e) => setPaymentInput(order.order_id, 'amount', e.target.value)}
+                                value={paymentInputs[rowKey]?.amount || ''}
+                                onChange={(e) => setPaymentInput(rowKey, 'amount', e.target.value)}
                               />
                               <select
                                 className="form-select form-select-sm"
                                 style={{ width: '110px' }}
-                                value={paymentInputs[order.order_id]?.mode || 'cash'}
-                                onChange={(e) => setPaymentInput(order.order_id, 'mode', e.target.value)}
+                                value={paymentInputs[rowKey]?.mode || 'cash'}
+                                onChange={(e) => setPaymentInput(rowKey, 'mode', e.target.value)}
                               >
                                 <option value="cash">Cash</option>
                                 <option value="wallet">Wallet</option>
@@ -447,6 +461,12 @@ const Orders = ({ onNavigate, userRole }) => {
                               </button>
                             </div>
                           )}
+                          <button
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={() => handleGenerateInvoice(order)}
+                          >
+                            Invoice
+                          </button>
                         </div>
                       </td>
                     )}
