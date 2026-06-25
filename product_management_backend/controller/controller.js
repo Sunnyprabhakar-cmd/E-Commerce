@@ -9,7 +9,7 @@ import filter from "../services/fileter.js";
 import update_product from "../services/update_product.js";
 import { paginate } from "../utils/pagination.js";
 import { add_to_cart,cart_info,delete_info_cart,update_cart } from "../cart/cart.js";
-import { placeOrder,cancelOrder,orderDetails,fetchAllOrders,changeOrderStatus,updatePaymentProgress,updatePaymentProgressForGroup,cancelOrderGroup } from "../orders/order.js";
+import { placeOrder,cancelOrder,orderDetails,fetchAllOrders,changeOrderStatus,updatePaymentProgress,updatePaymentProgressForGroup,cancelOrderGroup,changeOrderQuantity,applyOrderDiscount,fetchOrderActions } from "../orders/order.js";
 import {
     balance_check,
     diduct_balance,
@@ -386,6 +386,47 @@ export const adminOrderAction = async (req, res) => {
             return res.status(200).json(reply);
         }
 
+        if (action === 'increase_qty' || action === 'decrease_qty') {
+            const delta = action === 'increase_qty' ? 1 : -1;
+            const reply = await changeOrderQuantity(
+                order_id,
+                delta,
+                userId,
+                userName,
+                userPhone,
+                userRole
+            );
+            if (reply?.message === 'order not found') {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+            return res.status(200).json(reply);
+        }
+
+        if (action === 'apply_discount') {
+            const discount_percentage = Number(req.body.discount_percentage || 0);
+            if (Number.isNaN(discount_percentage) || discount_percentage < 0 || discount_percentage > 100) {
+                return res.status(400).json({ message: "discount_percentage must be between 0 and 100" });
+            }
+            const reply = await applyOrderDiscount(
+                order_id,
+                discount_percentage,
+                userId,
+                userName,
+                userPhone,
+                userRole
+            );
+            if (reply?.message === 'order not found') {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+            return res.status(200).json(reply);
+        }
+
         return res.status(400).json({ message: "Unsupported action" });
     } catch (err) {
         return res.status(400).json({ message: "some error occured", error: err });
@@ -457,6 +498,19 @@ export const adminOrderDetail=async(req,res)=>{
         return res.status(200).json(reply);
     }catch(err){
         return res.status(400).json({message:"some error occured",error:err});
+    }
+}
+
+export const getOrderActionHistory = async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        if (!orderId) {
+            return res.status(400).json({ message: 'order id is required' });
+        }
+        const actions = await fetchOrderActions(orderId);
+        return res.status(200).json({ message: 'order action history fetched', actions });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
     }
 }
 

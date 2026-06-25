@@ -81,12 +81,12 @@ const Orders = ({ onNavigate, userRole }) => {
     if (order.status === 'cancelled') {
       return 'Cancelled';
     }
-    const total = Number(order.total_cost || 0);
+    const payable = Number(order.payable_amount ?? order.total_cost || 0);
     const paid = Number(order.amount_paid || 0);
     if (paid <= 0) {
       return 'Unpaid';
     }
-    if (paid >= total) {
+    if (paid >= payable) {
       return 'Paid';
     }
     return 'Partial Paid';
@@ -133,6 +133,8 @@ const Orders = ({ onNavigate, userRole }) => {
     await handleAdminOrderAction(order, selection);
   };
 
+  const [orderActions, setOrderActions] = useState({});
+
   const handleCollectPayment = async (order) => {
     const key = getOrderKey(order);
     const inputs = paymentInputs[key] || {};
@@ -159,13 +161,72 @@ const Orders = ({ onNavigate, userRole }) => {
     }
   };
 
+  const handleAdjustQuantity = async (order, delta) => {
+    try {
+      const response = await api.post('/admin/orderAction', {
+        order_id: order.order_id || order.tracking_id,
+        action: delta > 0 ? 'increase_qty' : 'decrease_qty',
+      });
+      setMessage(response.data?.message || 'Quantity updated successfully');
+      fetchOrders();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error updating quantity';
+      setMessage(errorMsg);
+    }
+  };
+
+  const handleApplyOrderDiscount = async (order) => {
+    const key = getOrderKey(order);
+    const inputs = paymentInputs[key] || {};
+    const discount = Number(inputs.discount || 0);
+    if (Number.isNaN(discount) || discount < 0 || discount > 100) {
+      setMessage('Enter a valid discount percentage between 0 and 100');
+      return;
+    }
+    try {
+      const response = await api.post('/admin/orderAction', {
+        order_id: order.order_id || order.tracking_id,
+        action: 'apply_discount',
+        discount_percentage: discount,
+      });
+      setMessage(response.data?.message || 'Discount applied successfully');
+      setPaymentInputs((prev) => ({ ...prev, [key]: { ...prev[key], discount: '' } }));
+      fetchOrders();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error applying discount';
+      setMessage(errorMsg);
+    }
+  };
+
+  const fetchOrderActionHistory = async (order) => {
+    const orderId = order.order_id || order.tracking_id;
+    if (!orderId) {
+      return;
+    }
+    try {
+      const response = await api.get(`/admin/orderActions/${orderId}`);
+      setOrderActions((prev) => ({ ...prev, [orderId]: response.data?.actions || [] }));
+    } catch (err) {
+      console.warn('Unable to fetch order action history', err);
+    }
+  };
+
+  const toggleOrderHistory = async (order) => {
+    const orderId = order.order_id || order.tracking_id;
+    if (!orderId) return;
+    if (!orderActions[orderId]) {
+      await fetchOrderActionHistory(order);
+    }
+    setOrderActions((prev) => ({ ...prev, [orderId]: prev[orderId] || [] }));
+  };
+
   const getDisplayRemaining = (order) => {
-    const total = Number(order.total_cost || 0);
-    const paid = Number(order.amount_paid || 0);
     if (order.remaining_amount !== undefined) {
       return Number(order.remaining_amount);
     }
-    return Math.max(total - paid, 0);
+    const payable = Number(order.payable_amount ?? order.total_cost || 0);
+    const paid = Number(order.amount_paid || 0);
+    return Math.max(payable - paid, 0);
   };
 
   const createInvoiceHtml = (order) => {
@@ -175,7 +236,7 @@ const Orders = ({ onNavigate, userRole }) => {
     const remaining = getDisplayRemaining(order).toFixed(2);
     const invoiceDate = new Date().toLocaleString();
 
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${order.order_id || order.tracking_id || ''}</title><style>body{font-family:Helvetica,Arial,sans-serif;color:#333;margin:0;padding:0;background:#f4f6f8;}*{box-sizing:border-box;}header{background:#0d6efd;color:#fff;padding:24px;}header h1{margin:0;font-size:28px;}header p{margin:4px 0 0;color:#e9efff;}main{max-width:900px;margin:24px auto;padding:24px;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,.08);}section{margin-bottom:24px;}section h2{margin:0 0 12px;font-size:18px;color:#0d6efd;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{padding:12px 14px;border:1px solid #e1e5ea;text-align:left;}th{background:#f1f3f5;color:#333;}tbody tr:nth-child(even){background:#fafbfd;}strong{color:#111;} .invoice-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;} .invoice-meta div{min-width:220px;} .summary-box{background:#f8f9fa;border:1px solid #e1e5ea;padding:16px;border-radius:8px;} .summary-box p{margin:8px 0;} .print-button{display:inline-block;margin-bottom:16px;padding:10px 18px;background:#198754;color:#fff;text-decoration:none;border-radius:6px;border:none;cursor:pointer;font-weight:600;} @media print{body{background:#fff;}header{background:#fff;color:#000;} .print-button{display:none;} .summary-box{page-break-inside:avoid;}}</style></head><body><header><h1>Invoice</h1><p>Order reference: ${order.order_id || order.tracking_id || 'N/A'}</p></header><main><button class="print-button" onclick="window.print()">Print Invoice</button><section class="invoice-meta"><div><h2>Bill To</h2><p><strong>${order.customer_name || order.customer_email || 'Customer'}</strong></p><p>ID: ${order.user_id || order.customer_id || 'N/A'}</p></div><div><h2>Invoice Details</h2><p><strong>Date:</strong> ${invoiceDate}</p><p><strong>Status:</strong> ${paymentStatus}</p><p><strong>Payment Mode:</strong> ${order.payment_mode || 'N/A'}</p></div></section><section><table><thead><tr><th>Product</th><th>Product ID</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead><tbody><tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${totalCost}</td></tr></tbody></table></section><section class="summary-box"><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining:</strong> $${remaining}</p><p><strong>Handled By:</strong> ${order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</p><p><strong>Notes:</strong> ${order.payment_notes || 'None'}</p></section></main></body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${order.order_id || order.tracking_id || ''}</title><style>body{font-family:Helvetica,Arial,sans-serif;color:#333;margin:0;padding:0;background:#f4f6f8;}*{box-sizing:border-box;}header{background:#0d6efd;color:#fff;padding:24px;display:flex;align-items:center;gap:18px;}header img{height:64px;width:auto;border-radius:12px;background:#fff;padding:8px;}header .brand{display:flex;flex-direction:column;}header .brand h1{margin:0;font-size:28px;letter-spacing:0.04em;}header .brand p{margin:4px 0 0;color:#e9efff;}main{max-width:900px;margin:24px auto;padding:24px;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,.08);}section{margin-bottom:24px;}section h2{margin:0 0 12px;font-size:18px;color:#0d6efd;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{padding:12px 14px;border:1px solid #e1e5ea;text-align:left;}th{background:#f1f3f5;color:#333;}tbody tr:nth-child(even){background:#fafbfd;}strong{color:#111;} .invoice-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;} .invoice-meta div{min-width:220px;} .summary-box{background:#f8f9fa;border:1px solid #e1e5ea;padding:16px;border-radius:8px;} .summary-box p{margin:8px 0;} .print-button{display:inline-block;margin-bottom:16px;padding:10px 18px;background:#198754;color:#fff;text-decoration:none;border-radius:6px;border:none;cursor:pointer;font-weight:600;} @media print{body{background:#fff;}header{background:#fff;color:#000;} .print-button{display:none;} .summary-box{page-break-inside:avoid;}}</style></head><body><header><img src="https://via.placeholder.com/120x64?text=Logo" alt="Company logo"/><div class="brand"><h1>Pearry's Ice Cream</h1><p>Bringing sweet moments together</p></div></header><main><button class="print-button" onclick="window.print()">Print Invoice</button><section class="invoice-meta"><div><h2>Bill To</h2><p><strong>${order.customer_name || order.customer_email || 'Customer'}</strong></p><p>ID: ${order.user_id || order.customer_id || 'N/A'}</p></div><div><h2>Invoice Details</h2><p><strong>Date:</strong> ${invoiceDate}</p><p><strong>Status:</strong> ${paymentStatus}</p><p><strong>Payment Mode:</strong> ${order.payment_mode || 'N/A'}</p></div></section><section><table><thead><tr><th>Product</th><th>Product ID</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Discount</th><th>Payable</th></tr></thead><tbody><tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${Number(order.total_cost || 0).toFixed(2)}</td><td>${Number(order.discount_amount || 0).toFixed(2)} (${Number(order.discount_percentage || 0).toFixed(0)}%)</td><td>$${Number(order.payable_amount ?? order.total_cost || 0).toFixed(2)}</td></tr></tbody></table></section><section class="summary-box"><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining:</strong> $${remaining}</p><p><strong>Handled By:</strong> ${order.last_action_by_user_name || order.last_action_by_user_phone || order.last_action_by_user_id || 'N/A'}</p><p><strong>Notes:</strong> ${order.payment_notes || 'None'}</p></section></main></body></html>`;
   };
 
   const createGroupInvoiceHtml = (group) => {
@@ -184,7 +245,7 @@ const Orders = ({ onNavigate, userRole }) => {
     const remaining = Number(group.totalRemaining || 0).toFixed(2);
     const invoiceDate = new Date().toLocaleString();
 
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${group.groupId}</title><style>body{font-family:Helvetica,Arial,sans-serif;color:#333;margin:0;padding:0;background:#f4f6f8;}*{box-sizing:border-box;}header{background:#0d6efd;color:#fff;padding:24px;}header h1{margin:0;font-size:28px;}header p{margin:4px 0 0;color:#e9efff;}main{max-width:900px;margin:24px auto;padding:24px;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,.08);}section{margin-bottom:24px;}section h2{margin:0 0 12px;font-size:18px;color:#0d6efd;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{padding:12px 14px;border:1px solid #e1e5ea;text-align:left;}th{background:#f1f3f5;color:#333;}tbody tr:nth-child(even){background:#fafbfd;}strong{color:#111;} .invoice-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;} .invoice-meta div{min-width:220px;} .summary-box{background:#f8f9fa;border:1px solid #e1e5ea;padding:16px;border-radius:8px;} .summary-box p{margin:8px 0;} .print-button{display:inline-block;margin-bottom:16px;padding:10px 18px;background:#198754;color:#fff;text-decoration:none;border-radius:6px;border:none;cursor:pointer;font-weight:600;} @media print{body{background:#fff;}header{background:#fff;color:#000;} .print-button{display:none;} .summary-box{page-break-inside:avoid;}}</style></head><body><header><h1>Invoice</h1><p>Order Group: ${group.groupId}</p></header><main><button class="print-button" onclick="window.print()">Print Invoice</button><section class="invoice-meta"><div><h2>Bill To</h2><p><strong>${group.customerName || 'Customer'}</strong></p><p>ID: ${group.customerId || 'N/A'}</p></div><div><h2>Invoice Details</h2><p><strong>Date:</strong> ${invoiceDate}</p><p><strong>Status:</strong> ${group.paymentStatus}</p><p><strong>Payment Mode:</strong> ${group.paymentMode || 'N/A'}</p></div></section><section><table><thead><tr><th>Product</th><th>Product ID</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead><tbody>${group.orders.map((order) => `<tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${Number(order.total_cost || 0).toFixed(2)}</td></tr>`).join('')}</tbody></table></section><section class="summary-box"><p><strong>Total Amount:</strong> $${totalCost}</p><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining:</strong> $${remaining}</p><p><strong>Handled By:</strong> ${group.lastActionBy || 'N/A'}</p></section></main></body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${group.groupId}</title><style>body{font-family:Helvetica,Arial,sans-serif;color:#333;margin:0;padding:0;background:#f4f6f8;}*{box-sizing:border-box;}header{background:#0d6efd;color:#fff;padding:24px;display:flex;align-items:center;gap:18px;}header img{height:64px;width:auto;border-radius:12px;background:#fff;padding:8px;}header .brand{display:flex;flex-direction:column;}header .brand h1{margin:0;font-size:28px;letter-spacing:0.04em;}header .brand p{margin:4px 0 0;color:#e9efff;}main{max-width:900px;margin:24px auto;padding:24px;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,.08);}section{margin-bottom:24px;}section h2{margin:0 0 12px;font-size:18px;color:#0d6efd;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{padding:12px 14px;border:1px solid #e1e5ea;text-align:left;}th{background:#f1f3f5;color:#333;}tbody tr:nth-child(even){background:#fafbfd;}strong{color:#111;} .invoice-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;} .invoice-meta div{min-width:220px;} .summary-box{background:#f8f9fa;border:1px solid #e1e5ea;padding:16px;border-radius:8px;} .summary-box p{margin:8px 0;} .print-button{display:inline-block;margin-bottom:16px;padding:10px 18px;background:#198754;color:#fff;text-decoration:none;border-radius:6px;border:none;cursor:pointer;font-weight:600;} @media print{body{background:#fff;}header{background:#fff;color:#000;} .print-button{display:none;} .summary-box{page-break-inside:avoid;}}</style></head><body><header><img src="https://via.placeholder.com/120x64?text=Logo" alt="Company logo"/><div class="brand"><h1>Pearry's Ice Cream</h1><p>Bringing sweet moments together</p></div></header><main><button class="print-button" onclick="window.print()">Print Invoice</button><section class="invoice-meta"><div><h2>Bill To</h2><p><strong>${group.customerName || 'Customer'}</strong></p><p>ID: ${group.customerId || 'N/A'}</p></div><div><h2>Invoice Details</h2><p><strong>Date:</strong> ${invoiceDate}</p><p><strong>Status:</strong> ${group.paymentStatus}</p><p><strong>Payment Mode:</strong> ${group.paymentMode || 'N/A'}</p></div></section><section><table><thead><tr><th>Product</th><th>Product ID</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Discount</th><th>Payable</th></tr></thead><tbody>${group.orders.map((order) => `<tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${Number(order.total_cost || 0).toFixed(2)}</td><td>$${Number(order.discount_amount || 0).toFixed(2)}</td><td>$${Number(order.payable_amount ?? order.total_cost || 0).toFixed(2)}</td></tr>`).join('')}</tbody></table></section><section class="summary-box"><p><strong>Total Amount:</strong> $${totalCost}</p><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining:</strong> $${remaining}</p><p><strong>Handled By:</strong> ${group.lastActionBy || 'N/A'}</p></section></main></body></html>`;
   };
 
   const handleGenerateGroupInvoice = (group) => {
@@ -395,6 +456,7 @@ const Orders = ({ onNavigate, userRole }) => {
         groups[groupId] = {
           groupId,
           orders: [],
+          originalCost: 0,
           totalCost: 0,
           totalPaid: 0,
           totalRemaining: 0,
@@ -407,7 +469,8 @@ const Orders = ({ onNavigate, userRole }) => {
       }
 
       groups[groupId].orders.push(order);
-      groups[groupId].totalCost += Number(order.total_cost || 0);
+      groups[groupId].originalCost += Number(order.total_cost || 0);
+      groups[groupId].totalCost += Number(order.payable_amount ?? order.total_cost || 0);
       groups[groupId].totalPaid += Number(order.amount_paid || 0);
       groups[groupId].totalRemaining += getDisplayRemaining(order);
       groups[groupId].totalQuantity += Number(order.quantity || 0);
@@ -417,7 +480,7 @@ const Orders = ({ onNavigate, userRole }) => {
     });
 
     return Object.values(groups).map((group) => {
-      const allPaid = group.orders.every((order) => Number(order.amount_paid || 0) >= Number(order.total_cost || 0) && order.status !== 'cancelled');
+      const allPaid = group.orders.every((order) => Number(order.amount_paid || 0) >= Number(order.payable_amount ?? order.total_cost || 0) && order.status !== 'cancelled');
       const anyPaid = group.orders.some((order) => Number(order.amount_paid || 0) > 0);
       const allCancelled = group.orders.every((order) => order.status === 'cancelled');
       const paymentStatus = allCancelled
@@ -533,6 +596,8 @@ const Orders = ({ onNavigate, userRole }) => {
                 <th>Quantity</th>
                 <th>Unit Price</th>
                 <th>Total Cost</th>
+                {adminView && <th>Discount</th>}
+                {adminView && <th>Payable</th>}
                 <th>Status</th>
                 {adminView && <th>Payment Status</th>}
                 {adminView && <th>Amount Paid</th>}
@@ -565,7 +630,9 @@ const Orders = ({ onNavigate, userRole }) => {
                       <td>—</td>
                       <td>{group.totalQuantity}</td>
                       <td>—</td>
-                      <td>${group.totalCost.toFixed(2)}</td>
+                      <td>${group.originalCost.toFixed(2)}</td>
+                      {adminView && <td>—</td>}
+                      {adminView && <td>${group.totalCost.toFixed(2)}</td>}
                       <td>{groupStatus}</td>
                       {adminView && <td>{group.paymentStatus}</td>}
                       {adminView && <td>${group.totalPaid.toFixed(2)}</td>}
@@ -655,30 +722,49 @@ const Orders = ({ onNavigate, userRole }) => {
                           <td>{order.product_id}</td>
                           <td>{order.quantity}</td>
                           <td>${Number(order.product_price || 0).toFixed(2)}</td>
+                          {adminView && <td>{Number(order.discount_amount || 0).toFixed(2)} ({Number(order.discount_percentage || 0).toFixed(0)}%)</td>}
+                          {adminView && <td>${Number(order.payable_amount ?? order.total_cost || 0).toFixed(2)}</td>}
                           <td>${Number(order.total_cost || 0).toFixed(2)}</td>
                           <td>{order.status || 'N/A'}</td>
                           {adminView && <td>{orderPaymentStatus}</td>}
                           {adminView && <td>${displayPaid.toFixed(2)}</td>}
                           {adminView && <td>${displayRemaining.toFixed(2)}</td>}
                           {adminView && <td>{order.payment_mode || (displayRemaining > 0 ? 'unpaid' : 'N/A')}</td>}
-                          {adminView && <td>{order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</td>}
+                              {adminView && <td>{order.last_action_by_user_name || order.last_action_by_user_phone || order.last_action_by_user_id || 'N/A'}</td>}
                           {adminView && (
                             <td>
                               <div className="d-flex flex-column gap-2">
-                                <div className="d-flex gap-1">
-                                  <select
-                                    className="form-select form-select-sm"
-                                    style={{ minWidth: '120px' }}
-                                    value={actionSelections[rowKey] || ''}
-                                    onChange={(e) => setActionSelection(rowKey, e.target.value)}
+                                <div className="d-flex gap-1 flex-wrap">
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => handleAdjustQuantity(order, -1)}
                                   >
-                                    <option value="">Action...</option>
-                                    <option value="accept">Accept</option>
-                                    <option value="cancel">Cancel</option>
-                                  </select>
+                                    - Qty
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => handleAdjustQuantity(order, 1)}
+                                  >
+                                    + Qty
+                                  </button>
+                                </div>
+                                <div className="d-flex gap-1 align-items-center flex-wrap">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="1"
+                                    className="form-control form-control-sm"
+                                    style={{ width: '90px' }}
+                                    placeholder="Discount %"
+                                    value={paymentInputs[rowKey]?.discount || ''}
+                                    onChange={(e) => setPaymentInput(rowKey, 'discount', e.target.value)}
+                                  />
                                   <button
                                     className="btn btn-sm btn-outline-primary"
-                                    onClick={() => handleApplyAction(order)}
+                                    onClick={() => handleApplyOrderDiscount(order)}
                                   >
                                     Apply
                                   </button>
@@ -714,12 +800,32 @@ const Orders = ({ onNavigate, userRole }) => {
                                     </button>
                                   </div>
                                 )}
-                                <button
-                                  className="btn btn-sm btn-outline-secondary"
-                                  onClick={() => handleGenerateInvoice(order)}
-                                >
-                                  Invoice
-                                </button>
+                                <div className="d-flex gap-1 flex-wrap">
+                                  <button
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => handleGenerateInvoice(order)}
+                                  >
+                                    Invoice
+                                  </button>
+                                  <button
+                                    className="btn btn-sm btn-outline-info"
+                                    onClick={() => fetchOrderActionHistory(order)}
+                                  >
+                                    History
+                                  </button>
+                                </div>
+                                {orderActions[rowKey]?.length > 0 && (
+                                  <div className="border rounded p-2 bg-light" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                                    <div className="fw-bold mb-1">Recent actions</div>
+                                    {orderActions[rowKey].slice(0, 4).map((action) => (
+                                      <div key={action.action_id} className="small mb-1">
+                                        <div><strong>{action.action_type}</strong> by {action.action_by_user_name || action.action_by_user_id || 'Unknown'}</div>
+                                        <div>{action.action_note || action.action_metadata || ''}</div>
+                                        <div className="text-muted">{new Date(action.created_at).toLocaleString()}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </td>
                           )}

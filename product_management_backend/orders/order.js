@@ -16,6 +16,9 @@ const ensureOrderSchema = async () => {
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_group_id TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_paid NUMERIC DEFAULT 0");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS remaining_amount NUMERIC DEFAULT 0");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC DEFAULT 0");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC DEFAULT 0");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payable_amount NUMERIC DEFAULT 0");
     await db.query(`
         CREATE TABLE IF NOT EXISTS order_actions (
             action_id SERIAL PRIMARY KEY,
@@ -79,8 +82,11 @@ export const placeOrder = async (
             return { message: "Invalid quantity or product price" };
         }
         const total_cost = qty * unitPrice;
-        const amount_paid = is_paid ? total_cost : 0;
-        const remaining_amount = total_cost - amount_paid;
+        const discount_percentage = 0;
+        const discount_amount = 0;
+        const payable_amount = total_cost - discount_amount;
+        const amount_paid = is_paid ? payable_amount : 0;
+        const remaining_amount = payable_amount - amount_paid;
         const status = is_paid ? 'paid' : 'pending';
         const final_payment_mode = is_paid ? (payment_mode || 'wallet') : payment_mode;
         const final_payment_reference = is_paid ? (payment_reference || 'wallet debit') : payment_reference;
@@ -90,8 +96,8 @@ export const placeOrder = async (
 
         try {
             const created = await db.query(
-                "INSERT INTO orders(product_id,user_id,order_group_id,quantity,product_price,total_cost,is_paid,status,payment_mode,payment_reference,payment_notes,amount_paid,remaining_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING order_id",
-                [pid, user_id, order_group_id, qty, unitPrice, total_cost, is_paid, status, final_payment_mode, final_payment_reference, final_payment_notes, amount_paid, remaining_amount]
+                "INSERT INTO orders(product_id,user_id,order_group_id,quantity,product_price,total_cost,discount_percentage,discount_amount,payable_amount,is_paid,status,payment_mode,payment_reference,payment_notes,amount_paid,remaining_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING order_id",
+                [pid, user_id, order_group_id, qty, unitPrice, total_cost, discount_percentage, discount_amount, payable_amount, is_paid, status, final_payment_mode, final_payment_reference, final_payment_notes, amount_paid, remaining_amount]
             );
             const orderId = created.rows?.[0]?.order_id ?? null;
             if (orderId) {
@@ -215,7 +221,7 @@ export const updatePaymentProgress = async (
             return { message: 'Invalid payment information' };
         }
         const selected = await db.query(
-            "SELECT order_id, total_cost, amount_paid, remaining_amount, status FROM orders WHERE order_id=$1 LIMIT 1",
+            "SELECT order_id, total_cost, payable_amount, amount_paid, remaining_amount, status FROM orders WHERE order_id=$1 LIMIT 1",
             [order_id]
         );
         const orderRow = selected.rows?.[0];
@@ -226,13 +232,13 @@ export const updatePaymentProgress = async (
             return { message: 'order is cancelled' };
         }
         const existingPaid = Number(orderRow.amount_paid || 0);
-        const totalCost = Number(orderRow.total_cost || 0);
+        const payable = Number(orderRow.payable_amount ?? orderRow.total_cost || 0);
         const newPaid = existingPaid + Number(amount_received);
-        if (newPaid > totalCost) {
+        if (newPaid > payable) {
             return { message: 'Amount exceeds remaining balance' };
         }
-        const remaining_amount = totalCost - newPaid;
-        const is_paid = newPaid >= totalCost;
+        const remaining_amount = payable - newPaid;
+        const is_paid = newPaid >= payable;
         const status = is_paid ? 'paid' : 'partial';
 
         await db.query(
@@ -295,15 +301,15 @@ export const updatePaymentProgressForGroup = async (
 
         for (const o of orders) {
             if (remainingToAllocate <= 0) break;
-            const totalCost = Number(o.total_cost || 0);
+            const payable = Number(o.payable_amount ?? o.total_cost || 0);
             const existingPaid = Number(o.amount_paid || 0);
-            const orderRemaining = Math.max(totalCost - existingPaid, 0);
+            const orderRemaining = Math.max(payable - existingPaid, 0);
             if (orderRemaining <= 0) continue;
 
             const allocate = Math.min(orderRemaining, remainingToAllocate);
             const newPaid = existingPaid + allocate;
-            const newRemaining = Math.max(totalCost - newPaid, 0);
-            const is_paid = newPaid >= totalCost;
+            const newRemaining = Math.max(payable - newPaid, 0);
+            const is_paid = newPaid >= payable;
             const status = is_paid ? 'paid' : 'partial';
 
             await db.query(
@@ -335,6 +341,142 @@ export const updatePaymentProgressForGroup = async (
         };
     } catch (err) {
         return { message: 'error occured while updating group payment', error: err.message };
+    }
+};
+
+export const changeOrderQuantity = async (
+    order_id,
+    delta,
+    actionByUserId,
+    actionByUserName,
+    actionByUserPhone,
+    actionByRole = 'admin'
+) => {
+    try {
+        await ensureOrderSchema();
+        if (!order_id || !delta || Number(delta) === 0) {
+            return { message: 'Invalid parameters for quantity update' };
+        }
+
+        const selected = await db.query(
+            "SELECT order_id, quantity, product_price, discount_percentage, amount_paid, status FROM orders WHERE order_id=$1 LIMIT 1",
+            [order_id]
+        );
+        const orderRow = selected.rows?.[0];
+        if (!orderRow) {
+            return { message: 'order not found' };
+        }
+        if (orderRow.status === 'cancelled') {
+            return { message: 'order is cancelled' };
+        }
+
+        const newQuantity = Math.max(1, Number(orderRow.quantity || 0) + Number(delta));
+        const unitPrice = Number(orderRow.product_price || 0);
+        const total_cost = newQuantity * unitPrice;
+        const discount_percentage = Number(orderRow.discount_percentage || 0);
+        const discount_amount = Number((total_cost * discount_percentage) / 100);
+        const payable_amount = total_cost - discount_amount;
+        const amount_paid = Number(orderRow.amount_paid || 0);
+        const remaining_amount = Math.max(payable_amount - amount_paid, 0);
+        const is_paid = amount_paid >= payable_amount;
+        const status = orderRow.status === 'cancelled' ? 'cancelled' : is_paid ? 'paid' : amount_paid > 0 ? 'partial' : 'pending';
+
+        await db.query(
+            "UPDATE orders SET quantity=$1, total_cost=$2, discount_amount=$3, payable_amount=$4, remaining_amount=$5, is_paid=$6, status=$7 WHERE order_id=$8",
+            [newQuantity, total_cost, discount_amount, payable_amount, remaining_amount, is_paid, status, order_id]
+        );
+
+        await recordOrderAction(
+            order_id,
+            actionByUserId,
+            actionByUserName,
+            actionByUserPhone,
+            actionByRole,
+            delta > 0 ? 'quantity_increase' : 'quantity_decrease',
+            `Order quantity ${delta > 0 ? 'increased' : 'decreased'} by ${Math.abs(delta)}`,
+            JSON.stringify({ delta, quantity: newQuantity, total_cost, discount_percentage, discount_amount, payable_amount })
+        );
+
+        return {
+            message: 'order quantity updated',
+            order_id,
+            quantity: newQuantity,
+            total_cost,
+            discount_percentage,
+            discount_amount,
+            payable_amount,
+            amount_paid,
+            remaining_amount,
+            status,
+        };
+    } catch (err) {
+        return { message: 'error occured while updating quantity', error: err.message };
+    }
+};
+
+export const applyOrderDiscount = async (
+    order_id,
+    discount_percentage,
+    actionByUserId,
+    actionByUserName,
+    actionByUserPhone,
+    actionByRole = 'admin'
+) => {
+    try {
+        await ensureOrderSchema();
+        if (!order_id || discount_percentage === undefined || discount_percentage === null) {
+            return { message: 'Invalid parameters for discount update' };
+        }
+
+        const selected = await db.query(
+            "SELECT order_id, quantity, product_price, amount_paid, status FROM orders WHERE order_id=$1 LIMIT 1",
+            [order_id]
+        );
+        const orderRow = selected.rows?.[0];
+        if (!orderRow) {
+            return { message: 'order not found' };
+        }
+        if (orderRow.status === 'cancelled') {
+            return { message: 'order is cancelled' };
+        }
+
+        const pct = Math.max(0, Math.min(100, Number(discount_percentage)));
+        const total_cost = Number(orderRow.quantity || 0) * Number(orderRow.product_price || 0);
+        const discount_amount = Number(((total_cost * pct) / 100).toFixed(2));
+        const payable_amount = total_cost - discount_amount;
+        const amount_paid = Number(orderRow.amount_paid || 0);
+        const remaining_amount = Math.max(payable_amount - amount_paid, 0);
+        const is_paid = amount_paid >= payable_amount;
+        const status = orderRow.status === 'cancelled' ? 'cancelled' : is_paid ? 'paid' : amount_paid > 0 ? 'partial' : 'pending';
+
+        await db.query(
+            "UPDATE orders SET discount_percentage=$1, discount_amount=$2, payable_amount=$3, remaining_amount=$4, is_paid=$5, status=$6 WHERE order_id=$7",
+            [pct, discount_amount, payable_amount, remaining_amount, is_paid, status, order_id]
+        );
+
+        await recordOrderAction(
+            order_id,
+            actionByUserId,
+            actionByUserName,
+            actionByUserPhone,
+            actionByRole,
+            'discount_applied',
+            `Applied ${pct}% discount`,
+            JSON.stringify({ discount_percentage: pct, discount_amount, payable_amount })
+        );
+
+        return {
+            message: 'order discount applied',
+            order_id,
+            discount_percentage: pct,
+            discount_amount,
+            payable_amount,
+            amount_paid,
+            remaining_amount,
+            status,
+        };
+    } catch (err) {
+        return { message: 'error occured while applying discount', error: err.message };
     }
 };
 
@@ -474,5 +616,21 @@ export const fetchAllOrders = async () => {
         return { message: "admin order details fetched", orders: orderHistory.rows || [] };
     } catch (err) {
         return { message: "error occured while fetching admin order details", error: err.message };
+    }
+};
+
+export const fetchOrderActions = async (order_id) => {
+    try {
+        await ensureOrderSchema();
+        const result = await db.query(
+            `SELECT action_id, order_id, action_by_user_id, action_by_user_name, action_by_user_phone, action_by_role, action_type, action_note, action_metadata, created_at
+            FROM order_actions
+            WHERE order_id = $1
+            ORDER BY created_at DESC`,
+            [order_id]
+        );
+        return result.rows || [];
+    } catch (err) {
+        return [];
     }
 };
