@@ -232,7 +232,7 @@ export const updatePaymentProgress = async (
             return { message: 'order is cancelled' };
         }
         const existingPaid = Number(orderRow.amount_paid || 0);
-        const payable = Number(orderRow.payable_amount ?? orderRow.total_cost || 0);
+        const payable = Number(orderRow.payable_amount ?? (orderRow.total_cost || 0));
         const newPaid = existingPaid + Number(amount_received);
         if (newPaid > payable) {
             return { message: 'Amount exceeds remaining balance' };
@@ -301,7 +301,7 @@ export const updatePaymentProgressForGroup = async (
 
         for (const o of orders) {
             if (remainingToAllocate <= 0) break;
-            const payable = Number(o.payable_amount ?? o.total_cost || 0);
+            const payable = Number(o.payable_amount ?? (o.total_cost || 0));
             const existingPaid = Number(o.amount_paid || 0);
             const orderRemaining = Math.max(payable - existingPaid, 0);
             if (orderRemaining <= 0) continue;

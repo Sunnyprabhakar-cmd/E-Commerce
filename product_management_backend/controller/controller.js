@@ -284,19 +284,35 @@ export const adminOrderAction = async (req, res) => {
         const userName = req.user.name || req.user.username || null;
         const userPhone = req.user.phone || req.user.mobile || null;
         const userRole = req.user.role || 'admin';
-        const { order_id, action, amount_received, payment_mode, payment_reference, payment_notes } = req.body;
+        const {
+            order_id,
+            orderId,
+            action,
+            action_type,
+            amount_received,
+            amountReceived,
+            payment_mode,
+            payment_reference,
+            payment_notes,
+            discount_percentage,
+        } = req.body;
 
-        if (!order_id || !action) {
+        const requestedOrderId = order_id || orderId;
+        const requestedAction = action || action_type;
+        const requestedAmount = amount_received ?? amountReceived;
+        const requestedDiscount = discount_percentage ?? req.body.discountPercentage ?? req.body.discount;
+
+        if (!requestedOrderId || !requestedAction) {
             return res.status(400).json({ message: "order_id and action are required" });
         }
 
-        if (action === 'cancel') {
+        if (requestedAction === 'cancel') {
             // support cancelling an order group
             let reply;
-            if (String(order_id).startsWith('group-')) {
-                reply = await cancelOrderGroup(order_id, userId, userName, userPhone, userRole);
+            if (String(requestedOrderId).startsWith('group-')) {
+                reply = await cancelOrderGroup(requestedOrderId, userId, userName, userPhone, userRole);
             } else {
-                reply = await cancelOrder(null, null, order_id, userId, userName, userPhone, userRole);
+                reply = await cancelOrder(null, null, requestedOrderId, userId, userName, userPhone, userRole);
             }
             if (reply?.message === "order not found") {
                 return res.status(404).json(reply);
@@ -335,8 +351,8 @@ export const adminOrderAction = async (req, res) => {
             return res.status(200).json(reply);
         }
 
-        if (action === 'accept') {
-            const reply = await changeOrderStatus(order_id, 'accepted', userId, userName, userPhone, userRole, 'Order accepted by admin');
+        if (requestedAction === 'accept') {
+            const reply = await changeOrderStatus(requestedOrderId, 'accepted', userId, userName, userPhone, userRole, 'Order accepted by admin');
             if (reply?.message === 'order not found') {
                 return res.status(404).json(reply);
             }
@@ -346,19 +362,19 @@ export const adminOrderAction = async (req, res) => {
             return res.status(200).json(reply);
         }
 
-        if (action === 'collect_payment') {
-            if (!amount_received || Number(amount_received) <= 0) {
+        if (requestedAction === 'collect_payment') {
+            if (!requestedAmount || Number(requestedAmount) <= 0) {
                 return res.status(400).json({ message: "amount_received is required for collect_payment" });
             }
             // allow collect_payment on a group id as well
             let reply;
-            if (String(order_id).startsWith('group-')) {
+            if (String(requestedOrderId).startsWith('group-')) {
                 reply = await updatePaymentProgressForGroup(
-                    order_id,
-                    Number(amount_received),
+                    requestedOrderId,
+                    Number(requestedAmount),
                     payment_mode || 'cash',
                     payment_reference || null,
-                    payment_notes || `Partial payment of ${amount_received}`,
+                    payment_notes || `Partial payment of ${requestedAmount}`,
                     userId,
                     userName,
                     userPhone,
@@ -366,11 +382,11 @@ export const adminOrderAction = async (req, res) => {
                 );
             } else {
                 reply = await updatePaymentProgress(
-                    order_id,
-                    Number(amount_received),
+                    requestedOrderId,
+                    Number(requestedAmount),
                     payment_mode || 'cash',
                     payment_reference || null,
-                    payment_notes || `Partial payment of ${amount_received}`,
+                    payment_notes || `Partial payment of ${requestedAmount}`,
                     userId,
                     userName,
                     userPhone,
@@ -386,10 +402,10 @@ export const adminOrderAction = async (req, res) => {
             return res.status(200).json(reply);
         }
 
-        if (action === 'increase_qty' || action === 'decrease_qty') {
-            const delta = action === 'increase_qty' ? 1 : -1;
+        if (requestedAction === 'increase_qty' || requestedAction === 'decrease_qty') {
+            const delta = requestedAction === 'increase_qty' ? 1 : -1;
             const reply = await changeOrderQuantity(
-                order_id,
+                requestedOrderId,
                 delta,
                 userId,
                 userName,
@@ -405,13 +421,13 @@ export const adminOrderAction = async (req, res) => {
             return res.status(200).json(reply);
         }
 
-        if (action === 'apply_discount') {
-            const discount_percentage = Number(req.body.discount_percentage || 0);
+        if (requestedAction === 'apply_discount') {
+            const discount_percentage = Number(requestedDiscount || 0);
             if (Number.isNaN(discount_percentage) || discount_percentage < 0 || discount_percentage > 100) {
                 return res.status(400).json({ message: "discount_percentage must be between 0 and 100" });
             }
             const reply = await applyOrderDiscount(
-                order_id,
+                requestedOrderId,
                 discount_percentage,
                 userId,
                 userName,
@@ -427,7 +443,7 @@ export const adminOrderAction = async (req, res) => {
             return res.status(200).json(reply);
         }
 
-        return res.status(400).json({ message: "Unsupported action" });
+        return res.status(400).json({ message: "Unsupported admin action", action: requestedAction });
     } catch (err) {
         return res.status(400).json({ message: "some error occured", error: err });
     }

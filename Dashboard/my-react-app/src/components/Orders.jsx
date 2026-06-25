@@ -94,8 +94,9 @@ const Orders = ({ onNavigate, userRole }) => {
 
   const handleAdminOrderAction = async (order, action) => {
     try {
+      const orderId = order.order_id || order.tracking_id || order.order_group_id || order.groupId;
       const response = await api.post('/admin/orderAction', {
-        order_id: order.order_id || order.tracking_id,
+        order_id: orderId,
         action,
       });
       setMessage(response.data?.message || `Order ${action}d successfully`);
@@ -136,6 +137,7 @@ const Orders = ({ onNavigate, userRole }) => {
   const [orderActions, setOrderActions] = useState({});
 
   const handleCollectPayment = async (order) => {
+    const orderId = order.order_id || order.tracking_id || order.order_group_id || order.groupId;
     const key = getOrderKey(order);
     const inputs = paymentInputs[key] || {};
     const amount = Number(inputs.amount || 0);
@@ -145,7 +147,7 @@ const Orders = ({ onNavigate, userRole }) => {
     }
     try {
       const response = await api.post('/admin/orderAction', {
-        order_id: order.order_id || order.tracking_id,
+        order_id: orderId,
         action: 'collect_payment',
         amount_received: amount,
         payment_mode: inputs.mode || 'cash',
@@ -163,8 +165,9 @@ const Orders = ({ onNavigate, userRole }) => {
 
   const handleAdjustQuantity = async (order, delta) => {
     try {
+      const orderId = order.order_id || order.tracking_id || order.order_group_id || order.groupId;
       const response = await api.post('/admin/orderAction', {
-        order_id: order.order_id || order.tracking_id,
+        order_id: orderId,
         action: delta > 0 ? 'increase_qty' : 'decrease_qty',
       });
       setMessage(response.data?.message || 'Quantity updated successfully');
@@ -176,6 +179,7 @@ const Orders = ({ onNavigate, userRole }) => {
   };
 
   const handleApplyOrderDiscount = async (order) => {
+    const orderId = order.order_id || order.tracking_id || order.order_group_id || order.groupId;
     const key = getOrderKey(order);
     const inputs = paymentInputs[key] || {};
     const discount = Number(inputs.discount || 0);
@@ -185,7 +189,7 @@ const Orders = ({ onNavigate, userRole }) => {
     }
     try {
       const response = await api.post('/admin/orderAction', {
-        order_id: order.order_id || order.tracking_id,
+        order_id: orderId,
         action: 'apply_discount',
         discount_percentage: discount,
       });
@@ -199,7 +203,7 @@ const Orders = ({ onNavigate, userRole }) => {
   };
 
   const fetchOrderActionHistory = async (order) => {
-    const orderId = order.order_id || order.tracking_id;
+    const orderId = order.order_id || order.tracking_id || order.order_group_id || order.groupId;
     if (!orderId) {
       return;
     }
