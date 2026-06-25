@@ -19,7 +19,7 @@ import {
 //Creating Product
 export const createProduct=(req,res)=>{
     try{
-    let {id,name,price,category,piece,quantity}=req.body;
+    let {id,name,price,category,piece,availability}=req.body;
     if(!name){
         return res.status(400).json({
             message:"invalid name",
@@ -39,11 +39,8 @@ export const createProduct=(req,res)=>{
             message:"invalid piece",
         })
     }
-    if(!quantity){
-        quantity=1;
-    }
     const persist = async () => {
-        const product = await addProduct(id,name,price,category,piece,quantity);
+        const product = await addProduct(id,name,price,category,piece,availability);
         return res.status(201).json(product);
     };
     return persist().catch((err)=>res.status(400).json({message:"some error occured",error:err.message}));

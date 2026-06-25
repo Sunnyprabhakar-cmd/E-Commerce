@@ -20,9 +20,9 @@ const update_product = (req, res) => {
             values.push(Number(price));
             fields.push(`price=$${values.length}`);
         }
-        if (quantity != null && quantity !== "") {
-            values.push(Number(quantity));
-            fields.push(`quantity=$${values.length}`);
+        if (availability !== undefined) {
+           values.push(availability);
+           fields.push(`availability=$${values.length}`);
         }
 
         if (fields.length === 0) {

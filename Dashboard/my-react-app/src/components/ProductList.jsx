@@ -158,9 +158,9 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
                 <h5 className="card-title">{product.name}</h5>
                 <p className="card-text flex-grow-1">
                   Category: {product.category}<br />
-                  piece:{product.piece}<br />
+                  Piece:{product.piece}<br />
                   Price: ₹{product.price}<br />
-                  Available: {product.quantity}
+                  Available: {product.available}
                 </p>
                 <div className="btn-group w-100">
                   {canManageProducts && (
@@ -183,7 +183,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
                     <button
                       className="btn btn-primary btn-sm w-100"
                       onClick={() => handleAddToCart(product.id)}
-                      disabled={product.quantity <= 0}
+                      disabled={product.available != true}
                     >
                       Add to Cart
                     </button>

@@ -27,49 +27,58 @@ export const ensureProductSchema = async () => {
             price NUMERIC(12,2) NOT NULL CHECK (price >= 0),
             category TEXT NOT NULL,
             piece INTEGER NOT NULL DEFAULT 0,
-            quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+            availability BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT NOW()
         )
     `);
 
     // Ensure required columns exist in legacy tables.
    await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()");
-await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1");
+await db.query(
+  "ALTER TABLE products ADD COLUMN IF NOT EXISTS availability BOOLEAN NOT NULL DEFAULT TRUE"
+);
 await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS piece INTEGER NOT NULL DEFAULT 0");
     // Keep API stable: product IDs are treated as strings across backend/frontend.
-    await db.query("ALTER TABLE products ALTER COLUMN id TYPE TEXT USING id::text");
+    
 
     isProductSchemaReady = true;
 };
 
-export const addProduct = async (id,name, price, category,piece ,quantity) => {
+export const addProduct = async (id,name, price, category,piece ,availability) => {
     await ensureProductSchema();
     const newProduct = {
-        id,
-        name,
-        price: Number(price),
-        category,
-        piece,
-        quantity: Number(quantity),
-    };
+    id: Number(id),
+    name,
+    price: Number(price),
+    category,
+    piece: Number(piece),
+    availability,
+};
 
     const inserted = await db.query(
-        "INSERT INTO products(id,name,price,category,piece,quantity) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,name,price,category,piece,quantity",
-        [newProduct.id, newProduct.name, newProduct.price, newProduct.category,newProduct.piece, newProduct.quantity]
+        "INSERT INTO products(id,name,price,category,piece,availability) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,name,price,category,piece,availability",
+        [[
+ newProduct.id,
+ newProduct.name,
+ newProduct.price,
+ newProduct.category,
+ newProduct.piece,
+ newProduct.availability
+        ]]
     );
     return inserted.rows[0];
 };
 
 export const fetchAllProduct = async () => {
     await ensureProductSchema();
-    const products = await db.query("SELECT id,name,price,category,piece,quantity FROM products ORDER BY created_at DESC");
+    const products = await db.query("SELECT id,name,price,category,piece,availability FROM products ORDER BY created_at DESC");
     return products.rows;
 };
 
 export const fetchProductById = async (idOrName) => {
     await ensureProductSchema();
     const product = await db.query(
-        "SELECT id,name,price,category,piece,quantity FROM products WHERE id=$1 OR name=$1 LIMIT 1",
+        "SELECT id,name,price,category,piece,availability FROM products WHERE id=$1 OR name=$1 LIMIT 1",
         [idOrName]
     );
     return product.rows[0] || null;

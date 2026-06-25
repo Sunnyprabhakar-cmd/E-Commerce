@@ -7,7 +7,7 @@ const getInitialFormData = (product) => ({
   price: product?.price || '',
   category: product?.category || '',
   piece: product?.piece || '',
-  quantity: product?.quantity || ''
+  availability: product?.availability ?? true
 });
 
 const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
@@ -15,8 +15,13 @@ const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
   const [message, setMessage] = useState('');
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const { name, value, type, checked } = e.target;
+
+  setFormData({
+    ...formData,
+    [name]: type === "checkbox" ? checked : value,
+  });
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -113,16 +118,14 @@ const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
                   />
                 </div>
                 <div className="mb-3">
-                  <label className="form-label">Quantity</label>
-                  <input
-                    type="number"
-                    className="form-control"
-                    name="quantity"
-                    value={formData.quantity}
-                    onChange={handleChange}
-                    required
-                    min="0"
-                  />
+                <label className="form-label">Availability</label>
+               <input
+                  type="checkbox"
+                  className="form-check-input"
+                  name="availability"
+                  checked={formData.availability}
+                  onChange={handleChange}
+                />
                 </div>
                 <button type="submit" className="btn btn-primary me-2">
                   {product ? 'Update' : 'Create'}

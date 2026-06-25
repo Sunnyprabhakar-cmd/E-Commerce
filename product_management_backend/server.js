@@ -24,7 +24,6 @@ app.use((req, res, next) => {
   next();
 });
 
-
 app.use(globallimiter);
 app.use(helmet());
 app.use(express.json());
