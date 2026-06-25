@@ -138,12 +138,77 @@ const Orders = ({ onNavigate, userRole }) => {
     return Math.max(total - paid, 0);
   };
 
+  const createGroupInvoiceHtml = (group) => {
+    const totalCost = Number(group.totalCost || 0).toFixed(2);
+    const amountPaid = Number(group.totalPaid || 0).toFixed(2);
+    const remaining = Number(group.totalRemaining || 0).toFixed(2);
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${group.groupId}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{border:1px solid #ddd;padding:10px;text-align:left;}th{background:#f5f5f5;}p{margin:6px 0;}</style></head><body><h1>Invoice</h1><p><strong>Order Group:</strong> ${group.groupId}</p><p><strong>Customer:</strong> ${group.customerName || 'N/A'}</p><p><strong>Customer ID:</strong> ${group.customerId || 'N/A'}</p><p><strong>Payment Status:</strong> ${group.paymentStatus}</p><table><thead><tr><th>Product Name</th><th>Product ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th></tr></thead><tbody>${group.orders.map((order) => `<tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${Number(order.total_cost || 0).toFixed(2)}</td></tr>`).join('')}</tbody></table><p><strong>Total Amount:</strong> $${totalCost}</p><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining Amount:</strong> $${remaining}</p><p><strong>Payment Mode:</strong> ${group.paymentMode || 'N/A'}</p><p><strong>Handled By:</strong> ${group.lastActionBy || 'N/A'}</p></body></html>`;
+  };
+
   const createInvoiceHtml = (order) => {
     const paymentStatus = getPaymentStatus(order);
     const totalCost = Number(order.total_cost || 0).toFixed(2);
     const amountPaid = Number(order.amount_paid || 0).toFixed(2);
     const remaining = getDisplayRemaining(order).toFixed(2);
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${order.order_id || order.tracking_id || ''}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{border:1px solid #ddd;padding:10px;text-align:left;}th{background:#f5f5f5;}p{margin:6px 0;}</style></head><body><h1>Invoice</h1><p><strong>Order ID:</strong> ${order.order_id || order.tracking_id || ''}</p><p><strong>Customer:</strong> ${order.customer_name || order.customer_email || 'N/A'}</p><p><strong>Customer ID:</strong> ${order.user_id || order.customer_id || 'N/A'}</p><p><strong>Payment Status:</strong> ${paymentStatus}</p><table><thead><tr><th>Product Name</th><th>Product ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th></tr></thead><tbody><tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${totalCost}</td></tr></tbody></table><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining Amount:</strong> $${remaining}</p><p><strong>Payment Mode:</strong> ${order.payment_mode || 'N/A'}</p><p><strong>Handled By:</strong> ${order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</p><p><strong>Notes:</strong> ${order.payment_notes || 'None'}</p></body></html>`;
+  };
+
+  const createGroupInvoiceHtml = (group) => {
+    const totalCost = Number(group.totalCost || 0).toFixed(2);
+    const amountPaid = Number(group.totalPaid || 0).toFixed(2);
+    const remaining = Number(group.totalRemaining || 0).toFixed(2);
+
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${group.groupId}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{border:1px solid #ddd;padding:10px;text-align:left;}th{background:#f5f5f5;}p{margin:6px 0;}</style></head><body><h1>Invoice</h1><p><strong>Order Group:</strong> ${group.groupId}</p><p><strong>Customer:</strong> ${group.customerName || 'N/A'}</p><p><strong>Customer ID:</strong> ${group.customerId || 'N/A'}</p><p><strong>Payment Status:</strong> ${group.paymentStatus}</p><table><thead><tr><th>Product Name</th><th>Product ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th></tr></thead><tbody>${group.orders.map((order) => `<tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${Number(order.total_cost || 0).toFixed(2)}</td></tr>`).join('')}</tbody></table><p><strong>Total Amount:</strong> $${totalCost}</p><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining Amount:</strong> $${remaining}</p><p><strong>Payment Mode:</strong> ${group.paymentMode || 'N/A'}</p><p><strong>Handled By:</strong> ${group.lastActionBy || 'N/A'}</p></body></html>`;
+  };
+
+  const handleGenerateGroupInvoice = (group) => {
+    const invoiceWindow = window.open('', '_blank');
+    if (!invoiceWindow) {
+      setMessage('Unable to open invoice window. Check popup settings.');
+      return;
+    }
+    invoiceWindow.document.write(createGroupInvoiceHtml(group));
+    invoiceWindow.document.close();
+    invoiceWindow.focus();
+  };
+
+  const handleCancelGroup = async (group) => {
+    try {
+      await api.post('/cancelOrder', {
+        order_id: group.groupId,
+      });
+      setMessage('Group order cancelled successfully');
+      fetchOrders();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error cancelling group order';
+      setMessage(errorMsg);
+    }
+  };
+
+  const handleCollectPaymentGroup = async (group) => {
+    const key = group.groupId;
+    const inputs = paymentInputs[key] || {};
+    const amount = Number(inputs.amount || 0);
+    if (!amount || amount <= 0) {
+      setMessage('Enter a valid group payment amount');
+      return;
+    }
+    try {
+      const response = await api.post('/admin/orderAction', {
+        order_id: group.groupId,
+        action: 'collect_payment',
+        amount_received: amount,
+        payment_mode: inputs.mode || 'cash',
+        payment_reference: inputs.reference || null,
+        payment_notes: inputs.notes || `Partial payment for group ${group.groupId}`,
+      });
+      setMessage(response.data?.message || 'Group payment updated successfully');
+      setPaymentInputs((prev) => ({ ...prev, [key]: {} }));
+      fetchOrders();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error recording group payment';
+      setMessage(errorMsg);
+    }
   };
 
   const handleGenerateInvoice = (order) => {
@@ -447,7 +512,14 @@ const Orders = ({ onNavigate, userRole }) => {
                 return (
                   <Fragment key={group.groupId}>
                     <tr className="table-active">
-                      <td>{group.groupId}</td>
+                      <td>
+                        <button
+                          className="btn btn-sm btn-outline-link"
+                          onClick={() => toggleGroupExpansion(group.groupId)}
+                        >
+                          {expandedGroups[group.groupId] ? '▼' : '▶'} {group.groupId}
+                        </button>
+                      </td>
                       {adminView && <td>{group.customerName}</td>}
                       {adminView && <td>{group.customerId}</td>}
                       <td>{group.orders.length} item{group.orders.length > 1 ? 's' : ''}</td>
@@ -461,17 +533,66 @@ const Orders = ({ onNavigate, userRole }) => {
                       {adminView && <td>${group.totalRemaining.toFixed(2)}</td>}
                       {adminView && <td>{group.paymentMode}</td>}
                       {adminView && <td>{group.lastActionBy}</td>}
-                      {adminView && (
-                        <td>
+                      <td>
+                        <div className="d-flex flex-wrap gap-2 align-items-center">
                           <button
                             className="btn btn-sm btn-outline-secondary"
-                            onClick={() => toggleGroupExpansion(group.groupId)}
+                            onClick={() => handleGenerateGroupInvoice(group)}
                           >
-                            {expandedGroups[group.groupId] ? 'Hide items' : 'Show items'}
+                            Invoice
                           </button>
-                        </td>
-                      )}
-                      {!adminView && <td />}
+                          {adminView ? (
+                            <>
+                              {group.totalRemaining > 0 && (
+                                <div className="d-flex gap-1 align-items-center">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="form-control form-control-sm"
+                                    style={{ width: '100px' }}
+                                    placeholder="Amount"
+                                    value={paymentInputs[group.groupId]?.amount || ''}
+                                    onChange={(e) => setPaymentInput(group.groupId, 'amount', e.target.value)}
+                                  />
+                                  <select
+                                    className="form-select form-select-sm"
+                                    style={{ width: '110px' }}
+                                    value={paymentInputs[group.groupId]?.mode || 'cash'}
+                                    onChange={(e) => setPaymentInput(group.groupId, 'mode', e.target.value)}
+                                  >
+                                    <option value="cash">Cash</option>
+                                    <option value="wallet">Wallet</option>
+                                    <option value="upi">UPI</option>
+                                    <option value="card">Card</option>
+                                  </select>
+                                  <button
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => handleCollectPaymentGroup(group)}
+                                  >
+                                    Pay
+                                  </button>
+                                </div>
+                              )}
+                              <button
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => handleCancelGroup(group)}
+                              >
+                                Cancel Group
+                              </button>
+                            </>
+                          ) : (
+                            group.orders.some((o) => o.status !== 'cancelled') && (
+                              <button
+                                className="btn btn-sm btn-danger"
+                                onClick={() => handleCancelGroup(group)}
+                              >
+                                Cancel
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </td>
                     </tr>
                     {expandedGroups[group.groupId] && group.orders.map((order) => {
                       const rowKey = getOrderKey(order);

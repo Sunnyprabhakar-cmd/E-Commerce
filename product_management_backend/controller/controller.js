@@ -9,7 +9,7 @@ import filter from "../services/fileter.js";
 import update_product from "../services/update_product.js";
 import { paginate } from "../utils/pagination.js";
 import { add_to_cart,cart_info,delete_info_cart,update_cart } from "../cart/cart.js";
-import { placeOrder,cancelOrder,orderDetails,fetchAllOrders,changeOrderStatus,updatePaymentProgress } from "../orders/order.js";
+import { placeOrder,cancelOrder,orderDetails,fetchAllOrders,changeOrderStatus,updatePaymentProgress,updatePaymentProgressForGroup,cancelOrderGroup } from "../orders/order.js";
 import {
     balance_check,
     diduct_balance,
@@ -395,7 +395,13 @@ export const adminOrderAction = async (req, res) => {
 export const removeOrder=async(req,res)=>{
     try{
        const userId = req.user.id || req.user.email;
-       const reply = await cancelOrder(req.body.product_id, userId, req.body.order_id);
+       const orderId = req.body.order_id || null;
+       let reply;
+       if (orderId && String(orderId).startsWith('group-')) {
+           reply = await cancelOrderGroup(orderId, userId, req.user.name || req.user.username || null, req.user.phone || req.user.mobile || null, 'user');
+       } else {
+           reply = await cancelOrder(req.body.product_id, userId, orderId);
+       }
 
        if (reply?.message === "order not found") {
            return res.status(404).json(reply);
