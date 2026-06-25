@@ -264,6 +264,127 @@ export const updatePaymentProgress = async (
     }
 };
 
+export const updatePaymentProgressForGroup = async (
+    order_group_id,
+    amount_received,
+    payment_mode,
+    payment_reference,
+    payment_notes,
+    actionByUserId,
+    actionByUserName,
+    actionByUserPhone,
+    actionByRole = 'admin'
+) => {
+    try {
+        await ensureOrderSchema();
+        if (!order_group_id || !amount_received || amount_received <= 0) {
+            return { message: 'Invalid parameters' };
+        }
+
+        const selected = await db.query(
+            "SELECT order_id, total_cost, amount_paid, remaining_amount, status FROM orders WHERE order_group_id=$1 AND status != 'cancelled' ORDER BY order_id ASC",
+            [order_group_id]
+        );
+        const orders = selected.rows || [];
+        if (orders.length === 0) {
+            return { message: 'order group not found' };
+        }
+
+        let remainingToAllocate = Number(amount_received);
+        const updated = [];
+
+        for (const o of orders) {
+            if (remainingToAllocate <= 0) break;
+            const totalCost = Number(o.total_cost || 0);
+            const existingPaid = Number(o.amount_paid || 0);
+            const orderRemaining = Math.max(totalCost - existingPaid, 0);
+            if (orderRemaining <= 0) continue;
+
+            const allocate = Math.min(orderRemaining, remainingToAllocate);
+            const newPaid = existingPaid + allocate;
+            const newRemaining = Math.max(totalCost - newPaid, 0);
+            const is_paid = newPaid >= totalCost;
+            const status = is_paid ? 'paid' : 'partial';
+
+            await db.query(
+                "UPDATE orders SET amount_paid=$1, remaining_amount=$2, is_paid=$3, status=$4, payment_mode=$5, payment_reference=$6, payment_notes=$7 WHERE order_id=$8",
+                [newPaid, newRemaining, is_paid, status, payment_mode, payment_reference, payment_notes, o.order_id]
+            );
+
+            await recordOrderAction(
+                o.order_id,
+                actionByUserId,
+                actionByUserName,
+                actionByUserPhone,
+                actionByRole,
+                'payment_update',
+                `Received ${allocate} payment (group)`,
+                JSON.stringify({ amount_received: allocate, payment_mode, payment_reference, payment_notes })
+            );
+
+            updated.push({ order_id: o.order_id, allocated: allocate, amount_paid: newPaid, remaining_amount: newRemaining, is_paid, status });
+            remainingToAllocate -= allocate;
+        }
+
+        return {
+            message: 'group payment applied',
+            order_group_id,
+            allocated: Number(amount_received) - remainingToAllocate,
+            remaining_amount: remainingToAllocate,
+            updated,
+        };
+    } catch (err) {
+        return { message: 'error occured while updating group payment', error: err.message };
+    }
+};
+
+export const cancelOrderGroup = async (
+    order_group_id,
+    actionByUserId = null,
+    actionByUserName = null,
+    actionByUserPhone = null,
+    actionByRole = 'user'
+) => {
+    try {
+        await ensureOrderSchema();
+        if (!order_group_id) {
+            return { message: 'Invalid parameters' };
+        }
+        const selected = await db.query(
+            "SELECT order_id,product_id,user_id,amount_paid,status FROM orders WHERE order_group_id=$1",
+            [order_group_id]
+        );
+        const rows = selected.rows || [];
+        if (rows.length === 0) {
+            return { message: 'order group not found' };
+        }
+
+        let totalRefund = 0;
+        const cancelled = [];
+
+        for (const r of rows) {
+            if (r.status === 'cancelled') continue;
+            await db.query("UPDATE orders SET status='cancelled' WHERE order_id=$1", [r.order_id]);
+            await recordOrderAction(
+                r.order_id,
+                actionByUserId || r.user_id,
+                actionByUserName,
+                actionByUserPhone,
+                actionByRole,
+                'cancel',
+                'Order cancelled (group)',
+                null
+            );
+            totalRefund += Number(r.amount_paid || 0);
+            cancelled.push({ order_id: r.order_id, product_id: r.product_id, user_id: r.user_id, refund_amount: Number(r.amount_paid || 0) });
+        }
+
+        return { message: 'group cancelled', order_group_id, cancelled, totalRefund };
+    } catch (err) {
+        return { message: 'error occured while cancelling group', error: err.message };
+    }
+};
+
 export const changeOrderStatus = async (order_id, status, actionByUserId, actionByUserName, actionByUserPhone, actionByRole, actionNote = null) => {
     try {
         if (!order_id || !status) {

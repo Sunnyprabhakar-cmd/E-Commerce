@@ -291,7 +291,13 @@ export const adminOrderAction = async (req, res) => {
         }
 
         if (action === 'cancel') {
-            const reply = await cancelOrder(null, null, order_id, userId, userName, userPhone, userRole);
+            // support cancelling an order group
+            let reply;
+            if (String(order_id).startsWith('group-')) {
+                reply = await cancelOrderGroup(order_id, userId, userName, userPhone, userRole);
+            } else {
+                reply = await cancelOrder(null, null, order_id, userId, userName, userPhone, userRole);
+            }
             if (reply?.message === "order not found") {
                 return res.status(404).json(reply);
             }
@@ -344,17 +350,33 @@ export const adminOrderAction = async (req, res) => {
             if (!amount_received || Number(amount_received) <= 0) {
                 return res.status(400).json({ message: "amount_received is required for collect_payment" });
             }
-            const reply = await updatePaymentProgress(
-                order_id,
-                Number(amount_received),
-                payment_mode || 'cash',
-                payment_reference || null,
-                payment_notes || `Partial payment of ${amount_received}`,
-                userId,
-                userName,
-                userPhone,
-                userRole
-            );
+            // allow collect_payment on a group id as well
+            let reply;
+            if (String(order_id).startsWith('group-')) {
+                reply = await updatePaymentProgressForGroup(
+                    order_id,
+                    Number(amount_received),
+                    payment_mode || 'cash',
+                    payment_reference || null,
+                    payment_notes || `Partial payment of ${amount_received}`,
+                    userId,
+                    userName,
+                    userPhone,
+                    userRole
+                );
+            } else {
+                reply = await updatePaymentProgress(
+                    order_id,
+                    Number(amount_received),
+                    payment_mode || 'cash',
+                    payment_reference || null,
+                    payment_notes || `Partial payment of ${amount_received}`,
+                    userId,
+                    userName,
+                    userPhone,
+                    userRole
+                );
+            }
             if (reply?.message === 'order not found') {
                 return res.status(404).json(reply);
             }
