@@ -9,6 +9,7 @@ const Orders = ({ onNavigate, userRole }) => {
   const [customerFilter, setCustomerFilter] = useState('');
   const [sortField, setSortField] = useState('order_id');
   const [sortDirection, setSortDirection] = useState('desc');
+  const [paymentInputs, setPaymentInputs] = useState({});
 
   const adminView = userRole === 'admin';
   const fetchEndpoint = adminView ? '/orders' : '/orderDetail';
@@ -38,6 +39,55 @@ const Orders = ({ onNavigate, userRole }) => {
       fetchOrders();
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Error cancelling order';
+      setMessage(errorMsg);
+    }
+  };
+
+  const handleAdminOrderAction = async (order, action) => {
+    try {
+      const response = await api.post('/admin/orderAction', {
+        order_id: order.order_id || order.tracking_id,
+        action,
+      });
+      setMessage(response.data?.message || `Order ${action}d successfully`);
+      fetchOrders();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || `Error ${action}ing order`;
+      setMessage(errorMsg);
+    }
+  };
+
+  const setPaymentInput = (orderId, field, value) => {
+    setPaymentInputs((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...prev[orderId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleCollectPayment = async (order) => {
+    const inputs = paymentInputs[order.order_id] || {};
+    const amount = Number(inputs.amount || 0);
+    if (!amount || amount <= 0) {
+      setMessage('Enter a valid payment amount');
+      return;
+    }
+    try {
+      const response = await api.post('/admin/orderAction', {
+        order_id: order.order_id || order.tracking_id,
+        action: 'collect_payment',
+        amount_received: amount,
+        payment_mode: inputs.mode || 'cash',
+        payment_reference: inputs.reference || null,
+        payment_notes: inputs.notes || `Partial payment for order ${order.order_id}`,
+      });
+      setMessage(response.data?.message || 'Payment updated successfully');
+      setPaymentInputs((prev) => ({ ...prev, [order.order_id]: {} }));
+      fetchOrders();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error recording payment';
       setMessage(errorMsg);
     }
   };
@@ -163,7 +213,12 @@ const Orders = ({ onNavigate, userRole }) => {
                 <th>Quantity</th>
                 <th>Unit Price</th>
                 <th>Total Cost</th>
-                {adminView && <th>Paid</th>}
+                <th>Status</th>
+                {adminView && <th>Amount Paid</th>}
+                {adminView && <th>Remaining</th>}
+                {adminView && <th>Payment Mode</th>}
+                {adminView && <th>Handled By</th>}
+                {adminView && <th>Action</th>}
                 {!adminView && <th>Actions</th>}
               </tr>
             </thead>
@@ -183,7 +238,62 @@ const Orders = ({ onNavigate, userRole }) => {
                     <td>{order.quantity}</td>
                     <td>${Number(order.product_price || 0).toFixed(2)}</td>
                     <td>${Number(order.total_cost || 0).toFixed(2)}</td>
-                    {adminView && <td>{isPaid ? 'Paid' : 'Unpaid'}</td>}
+                    <td>{order.status || 'N/A'}</td>
+                    {adminView && <td>${Number(order.amount_paid || 0).toFixed(2)}</td>}
+                    {adminView && <td>${Number(order.remaining_amount || 0).toFixed(2)}</td>}
+                    {adminView && <td>{order.payment_mode || 'N/A'}</td>}
+                    {adminView && <td>{order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</td>}
+                    {adminView && (
+                      <td>
+                        <div className="d-flex flex-column gap-2">
+                          <div className="btn-group">
+                            <button
+                              className="btn btn-sm btn-success"
+                              onClick={() => handleAdminOrderAction(order, 'accept')}
+                            >
+                              Accept
+                            </button>
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => handleAdminOrderAction(order, 'cancel')}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          {order.remaining_amount > 0 && order.status !== 'cancelled' && (
+                            <div className="d-flex gap-1 align-items-center">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="form-control form-control-sm"
+                                style={{ width: '90px' }}
+                                placeholder="Amount"
+                                value={paymentInputs[order.order_id]?.amount || ''}
+                                onChange={(e) => setPaymentInput(order.order_id, 'amount', e.target.value)}
+                              />
+                              <select
+                                className="form-select form-select-sm"
+                                style={{ width: '110px' }}
+                                value={paymentInputs[order.order_id]?.mode || 'cash'}
+                                onChange={(e) => setPaymentInput(order.order_id, 'mode', e.target.value)}
+                              >
+                                <option value="cash">Cash</option>
+                                <option value="wallet">Wallet</option>
+                                <option value="upi">UPI</option>
+                                <option value="card">Card</option>
+                              </select>
+                              <button
+                                className="btn btn-sm btn-primary"
+                                onClick={() => handleCollectPayment(order)}
+                              >
+                                Record
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     {!adminView && (
                       <td>
                         <button

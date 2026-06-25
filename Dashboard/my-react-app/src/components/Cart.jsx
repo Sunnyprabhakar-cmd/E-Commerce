@@ -6,6 +6,9 @@ const Cart = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [walletBalance, setWalletBalance] = useState(0);
+  const [selectedOrderItem, setSelectedOrderItem] = useState(null);
+  const [isOrderModalOpen, setOrderModalOpen] = useState(false);
+  const [modalError, setModalError] = useState('');
 
   const fetchWalletBalance = async () => {
     try {
@@ -79,51 +82,76 @@ const Cart = ({ onNavigate }) => {
     }
   };
 
-  const handlePlaceOrder = async (item) => {
-    const orderCost = Number(item.price || 0) * Number(item.quantity || 0);
-    if (orderCost <= 0) {
-      setMessage('Invalid order cost');
+  const openOrderDialog = (item) => {
+    setSelectedOrderItem(item);
+    setModalError('');
+    setOrderModalOpen(true);
+  };
+
+  const closeOrderDialog = () => {
+    setSelectedOrderItem(null);
+    setModalError('');
+    setOrderModalOpen(false);
+  };
+
+  const handlePlaceOrder = async (item, isPaid) => {
+    if (!item) {
       return;
     }
 
-    if (walletBalance < orderCost) {
-      setMessage('Insufficient wallet balance. Please add funds in Wallet.');
+    const orderCost = Number(item.price || 0) * Number(item.quantity || 0);
+    if (orderCost <= 0) {
+      setModalError('Invalid order cost');
       return;
+    }
+
+    if (isPaid && walletBalance < orderCost) {
+      setModalError('Insufficient wallet balance. Redirecting to Wallet.');
+      closeOrderDialog();
+      return onNavigate && onNavigate('wallet');
     }
 
     try {
-      await api.post('/afterOrder', {
-        price: orderCost,
-        type: 'debit',
-        reference_type: 'order',
-        message: `Payment for product ${item.product_id}`,
-        order_id: null
-      });
+      if (isPaid) {
+        await api.post('/afterOrder', {
+          price: orderCost,
+          type: 'debit',
+          reference_type: 'order',
+          message: `Payment for product ${item.product_id}`,
+          order_id: null,
+        });
+      }
 
       await api.post('/placeOrder', {
         product_id: item.product_id,
         quantity: item.quantity,
-        product_price: item.price
+        product_price: item.price,
+        is_paid: Boolean(isPaid),
+        payment_mode: isPaid ? 'wallet' : null,
+        payment_reference: isPaid ? `wallet-payment-${item.product_id}` : null,
+        payment_notes: isPaid ? 'Paid from wallet at order placement' : 'Deferred payment placed',
       });
 
       await api.post('/deleteProductFromCart', { product_id: item.product_id });
-      setMessage('Order placed successfully!');
+      setMessage(isPaid ? 'Order placed and paid successfully!' : 'Order placed successfully with deferred payment!');
+      closeOrderDialog();
       fetchCartItems();
     } catch (error) {
-      // If order placement fails after debit, credit back the amount.
-      try {
-        await api.post('/balanceCredit', {
-          price: orderCost,
-          type: 'credit',
-          reference_type: 'order_refund',
-          message: `Auto-refund for failed order ${item.product_id}`,
-          order_id: null
-        });
-      } catch {
-        // ignore refund failure here; surface primary error below
+      if (isPaid) {
+        try {
+          await api.post('/balanceCredit', {
+            price: orderCost,
+            type: 'credit',
+            reference_type: 'order_refund',
+            message: `Auto-refund for failed order ${item.product_id}`,
+            order_id: null,
+          });
+        } catch {
+          // ignore refund failure here; surface primary error below
+        }
       }
       const errorMsg = error.response?.data?.message || 'Error placing order';
-      setMessage(errorMsg);
+      setModalError(errorMsg);
       fetchWalletBalance();
     }
   };
@@ -158,7 +186,11 @@ const Cart = ({ onNavigate }) => {
         await api.post('/placeOrder', {
           product_id: item.product_id,
           quantity: item.quantity,
-          product_price: item.price
+          product_price: item.price,
+          is_paid: true,
+          payment_mode: 'wallet',
+          payment_reference: `wallet-payment-${item.product_id}`,
+          payment_notes: 'Paid from wallet during checkout',
         });
 
         await api.post('/deleteProductFromCart', { product_id: item.product_id });
@@ -256,7 +288,7 @@ const Cart = ({ onNavigate }) => {
                       </button>
                       <button
                         className="btn btn-sm btn-success ms-2"
-                        onClick={() => handlePlaceOrder(item)}
+                        onClick={() => openOrderDialog(item)}
                       >
                         Place Order
                       </button>
@@ -282,6 +314,37 @@ const Cart = ({ onNavigate }) => {
               </div>
             </div>
           </div>
+          {isOrderModalOpen && selectedOrderItem && (
+            <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+              <div className="modal-dialog">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">Choose payment option</h5>
+                    <button type="button" className="btn-close" onClick={closeOrderDialog}></button>
+                  </div>
+                  <div className="modal-body">
+                    <p>
+                      You are placing an order for <strong>{selectedOrderItem.product_name || selectedOrderItem.product_id}</strong>.
+                    </p>
+                    <p>Quantity: {selectedOrderItem.quantity}</p>
+                    <p>Amount: ${Number(selectedOrderItem.price || 0).toFixed(2)} x {selectedOrderItem.quantity} = ${(Number(selectedOrderItem.price || 0) * Number(selectedOrderItem.quantity || 0)).toFixed(2)}</p>
+                    {modalError && <div className="alert alert-danger">{modalError}</div>}
+                  </div>
+                  <div className="modal-footer">
+                    <button type="button" className="btn btn-secondary" onClick={closeOrderDialog}>
+                      Cancel
+                    </button>
+                    <button type="button" className="btn btn-outline-primary" onClick={() => handlePlaceOrder(selectedOrderItem, false)}>
+                      Pay Later
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={() => handlePlaceOrder(selectedOrderItem, true)}>
+                      Pay Now
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
