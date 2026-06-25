@@ -45,6 +45,36 @@ const Orders = ({ onNavigate, userRole }) => {
     }
   };
 
+  const handleReorderOrder = async (order) => {
+    try {
+      await api.post('/addProductInCart', {
+        product_id: order.product_id,
+        quantity: order.quantity || 1,
+      });
+      setMessage('Cancelled order added to cart for reorder');
+      onNavigate && onNavigate('cart');
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error reordering cancelled item';
+      setMessage(errorMsg);
+    }
+  };
+
+  const handleReorderGroup = async (group) => {
+    try {
+      for (const order of group.orders.filter((o) => o.status === 'cancelled')) {
+        await api.post('/addProductInCart', {
+          product_id: order.product_id,
+          quantity: order.quantity || 1,
+        });
+      }
+      setMessage('Cancelled group items added to cart for reorder');
+      onNavigate && onNavigate('cart');
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error reordering cancelled group';
+      setMessage(errorMsg);
+    }
+  };
+
   const getOrderKey = (order) => order.order_id || order.tracking_id || `${order.product_id}-${order.user_id}`;
 
   const getPaymentStatus = (order) => {
@@ -143,15 +173,18 @@ const Orders = ({ onNavigate, userRole }) => {
     const totalCost = Number(order.total_cost || 0).toFixed(2);
     const amountPaid = Number(order.amount_paid || 0).toFixed(2);
     const remaining = getDisplayRemaining(order).toFixed(2);
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${order.order_id || order.tracking_id || ''}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{border:1px solid #ddd;padding:10px;text-align:left;}th{background:#f5f5f5;}p{margin:6px 0;}</style></head><body><h1>Invoice</h1><p><strong>Order ID:</strong> ${order.order_id || order.tracking_id || ''}</p><p><strong>Customer:</strong> ${order.customer_name || order.customer_email || 'N/A'}</p><p><strong>Customer ID:</strong> ${order.user_id || order.customer_id || 'N/A'}</p><p><strong>Payment Status:</strong> ${paymentStatus}</p><table><thead><tr><th>Product Name</th><th>Product ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th></tr></thead><tbody><tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${totalCost}</td></tr></tbody></table><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining Amount:</strong> $${remaining}</p><p><strong>Payment Mode:</strong> ${order.payment_mode || 'N/A'}</p><p><strong>Handled By:</strong> ${order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</p><p><strong>Notes:</strong> ${order.payment_notes || 'None'}</p></body></html>`;
+    const invoiceDate = new Date().toLocaleString();
+
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${order.order_id || order.tracking_id || ''}</title><style>body{font-family:Helvetica,Arial,sans-serif;color:#333;margin:0;padding:0;background:#f4f6f8;}*{box-sizing:border-box;}header{background:#0d6efd;color:#fff;padding:24px;}header h1{margin:0;font-size:28px;}header p{margin:4px 0 0;color:#e9efff;}main{max-width:900px;margin:24px auto;padding:24px;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,.08);}section{margin-bottom:24px;}section h2{margin:0 0 12px;font-size:18px;color:#0d6efd;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{padding:12px 14px;border:1px solid #e1e5ea;text-align:left;}th{background:#f1f3f5;color:#333;}tbody tr:nth-child(even){background:#fafbfd;}strong{color:#111;} .invoice-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;} .invoice-meta div{min-width:220px;} .summary-box{background:#f8f9fa;border:1px solid #e1e5ea;padding:16px;border-radius:8px;} .summary-box p{margin:8px 0;} .print-button{display:inline-block;margin-bottom:16px;padding:10px 18px;background:#198754;color:#fff;text-decoration:none;border-radius:6px;border:none;cursor:pointer;font-weight:600;} @media print{body{background:#fff;}header{background:#fff;color:#000;} .print-button{display:none;} .summary-box{page-break-inside:avoid;}}</style></head><body><header><h1>Invoice</h1><p>Order reference: ${order.order_id || order.tracking_id || 'N/A'}</p></header><main><button class="print-button" onclick="window.print()">Print Invoice</button><section class="invoice-meta"><div><h2>Bill To</h2><p><strong>${order.customer_name || order.customer_email || 'Customer'}</strong></p><p>ID: ${order.user_id || order.customer_id || 'N/A'}</p></div><div><h2>Invoice Details</h2><p><strong>Date:</strong> ${invoiceDate}</p><p><strong>Status:</strong> ${paymentStatus}</p><p><strong>Payment Mode:</strong> ${order.payment_mode || 'N/A'}</p></div></section><section><table><thead><tr><th>Product</th><th>Product ID</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead><tbody><tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${totalCost}</td></tr></tbody></table></section><section class="summary-box"><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining:</strong> $${remaining}</p><p><strong>Handled By:</strong> ${order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A'}</p><p><strong>Notes:</strong> ${order.payment_notes || 'None'}</p></section></main></body></html>`;
   };
 
   const createGroupInvoiceHtml = (group) => {
     const totalCost = Number(group.totalCost || 0).toFixed(2);
     const amountPaid = Number(group.totalPaid || 0).toFixed(2);
     const remaining = Number(group.totalRemaining || 0).toFixed(2);
+    const invoiceDate = new Date().toLocaleString();
 
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${group.groupId}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#222;}h1{margin-bottom:8px;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{border:1px solid #ddd;padding:10px;text-align:left;}th{background:#f5f5f5;}p{margin:6px 0;}</style></head><body><h1>Invoice</h1><p><strong>Order Group:</strong> ${group.groupId}</p><p><strong>Customer:</strong> ${group.customerName || 'N/A'}</p><p><strong>Customer ID:</strong> ${group.customerId || 'N/A'}</p><p><strong>Payment Status:</strong> ${group.paymentStatus}</p><table><thead><tr><th>Product Name</th><th>Product ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th></tr></thead><tbody>${group.orders.map((order) => `<tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${Number(order.total_cost || 0).toFixed(2)}</td></tr>`).join('')}</tbody></table><p><strong>Total Amount:</strong> $${totalCost}</p><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining Amount:</strong> $${remaining}</p><p><strong>Payment Mode:</strong> ${group.paymentMode || 'N/A'}</p><p><strong>Handled By:</strong> ${group.lastActionBy || 'N/A'}</p></body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${group.groupId}</title><style>body{font-family:Helvetica,Arial,sans-serif;color:#333;margin:0;padding:0;background:#f4f6f8;}*{box-sizing:border-box;}header{background:#0d6efd;color:#fff;padding:24px;}header h1{margin:0;font-size:28px;}header p{margin:4px 0 0;color:#e9efff;}main{max-width:900px;margin:24px auto;padding:24px;background:#fff;border-radius:8px;box-shadow:0 0 20px rgba(0,0,0,.08);}section{margin-bottom:24px;}section h2{margin:0 0 12px;font-size:18px;color:#0d6efd;}table{width:100%;border-collapse:collapse;margin-top:16px;}th,td{padding:12px 14px;border:1px solid #e1e5ea;text-align:left;}th{background:#f1f3f5;color:#333;}tbody tr:nth-child(even){background:#fafbfd;}strong{color:#111;} .invoice-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;} .invoice-meta div{min-width:220px;} .summary-box{background:#f8f9fa;border:1px solid #e1e5ea;padding:16px;border-radius:8px;} .summary-box p{margin:8px 0;} .print-button{display:inline-block;margin-bottom:16px;padding:10px 18px;background:#198754;color:#fff;text-decoration:none;border-radius:6px;border:none;cursor:pointer;font-weight:600;} @media print{body{background:#fff;}header{background:#fff;color:#000;} .print-button{display:none;} .summary-box{page-break-inside:avoid;}}</style></head><body><header><h1>Invoice</h1><p>Order Group: ${group.groupId}</p></header><main><button class="print-button" onclick="window.print()">Print Invoice</button><section class="invoice-meta"><div><h2>Bill To</h2><p><strong>${group.customerName || 'Customer'}</strong></p><p>ID: ${group.customerId || 'N/A'}</p></div><div><h2>Invoice Details</h2><p><strong>Date:</strong> ${invoiceDate}</p><p><strong>Status:</strong> ${group.paymentStatus}</p><p><strong>Payment Mode:</strong> ${group.paymentMode || 'N/A'}</p></div></section><section><table><thead><tr><th>Product</th><th>Product ID</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead><tbody>${group.orders.map((order) => `<tr><td>${order.product_name || 'N/A'}</td><td>${order.product_id || 'N/A'}</td><td>${order.quantity || 0}</td><td>$${Number(order.product_price || 0).toFixed(2)}</td><td>$${Number(order.total_cost || 0).toFixed(2)}</td></tr>`).join('')}</tbody></table></section><section class="summary-box"><p><strong>Total Amount:</strong> $${totalCost}</p><p><strong>Amount Paid:</strong> $${amountPaid}</p><p><strong>Remaining:</strong> $${remaining}</p><p><strong>Handled By:</strong> ${group.lastActionBy || 'N/A'}</p></section></main></body></html>`;
   };
 
   const handleGenerateGroupInvoice = (group) => {
@@ -587,6 +620,13 @@ const Orders = ({ onNavigate, userRole }) => {
                                 Cancel Group
                               </button>
                             </>
+                          ) : group.orders.every((o) => o.status === 'cancelled') ? (
+                            <button
+                              className="btn btn-sm btn-primary"
+                              onClick={() => handleReorderGroup(group)}
+                            >
+                              Reorder Group
+                            </button>
                           ) : (
                             group.orders.some((o) => o.status !== 'cancelled') && (
                               <button
@@ -685,12 +725,21 @@ const Orders = ({ onNavigate, userRole }) => {
                           )}
                           {!adminView && (
                             <td>
-                              <button
-                                className="btn btn-sm btn-danger"
-                                onClick={() => handleCancelOrder(order)}
-                              >
-                                Cancel
-                              </button>
+                              {order.status === 'cancelled' ? (
+                                <button
+                                  className="btn btn-sm btn-primary"
+                                  onClick={() => handleReorderOrder(order)}
+                                >
+                                  Reorder
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn btn-sm btn-danger"
+                                  onClick={() => handleCancelOrder(order)}
+                                >
+                                  Cancel
+                                </button>
+                              )}
                             </td>
                           )}
                         </tr>
