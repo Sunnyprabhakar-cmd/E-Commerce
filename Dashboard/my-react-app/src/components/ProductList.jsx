@@ -227,36 +227,34 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
 
       <div className="row">
         {products.map((product) => (
-          <div key={product.id} className="col-md-4 mb-4">
-            <div className="card h-100">
-              <div className="card-body d-flex flex-column">
-                <h5 className="card-title">{product.name}</h5>
-                <p className="card-text flex-grow-1">
-                  Category: {product.category}<br />
-                  Piece:{product.piece}<br />
-                  Price: ₹{product.price}<br />
-                  Available: {product.availability?"Yes":"No"}
-                </p>
-                <div className="btn-group w-100">
+          <div key={product.id} className="col-12 mb-3">
+            <div className="card h-100 product-row-card">
+              <div className="card-body d-flex flex-column flex-md-row gap-3 align-items-md-center">
+                <div className="product-thumb">
+                  <div className="product-thumb-inner">{String(product.name || '').slice(0, 1).toUpperCase()}</div>
+                </div>
+                <div className="flex-grow-1">
+                  <div className="d-flex flex-wrap gap-2 align-items-center mb-1">
+                    <h5 className="card-title mb-0">{product.name}</h5>
+                    <span className="badge text-bg-warning">ID: {product.id}</span>
+                  </div>
+                  <div className="product-meta">
+                    <span>Category: {product.category}</span>
+                    <span>Piece: {product.piece}</span>
+                    <span>Price: ₹{product.price}</span>
+                    <span>Available: {product.availability ? 'Yes' : 'No'}</span>
+                  </div>
+                </div>
+                <div className="d-flex gap-2 flex-wrap justify-content-md-end">
                   {canManageProducts && (
                     <>
-                      <button
-                        className="btn btn-warning btn-sm"
-                        onClick={() => onEdit(product)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() => handleDelete(product.id)}
-                      >
-                        Delete
-                      </button>
+                      <button className="btn btn-outline-primary btn-sm" onClick={() => onEdit(product)}>Edit</button>
+                      <button className="btn btn-outline-danger btn-sm" onClick={() => handleDelete(product.id)}>Delete</button>
                     </>
                   )}
                   {!canManageProducts && (
                     <button
-                      className="btn btn-primary btn-sm w-100"
+                      className="btn btn-primary btn-sm"
                       onClick={() => handleAddToCart(product.id)}
                       disabled={product.availability != true}
                     >

@@ -23,6 +23,8 @@ import {
     getStockEntries,
     createStockEntry,
     listEmployees,
+    getEmployeeProfiles,
+    saveEmployeeProfile,
     getSalarySummary,
     saveEmployeePermissions,
     adjustEmployeeSalary,
@@ -523,8 +525,29 @@ export const stockCreate = async (req, res) => {
 
 export const employeeList = async (_req, res) => {
     try {
-        const employees = await listEmployees();
+        const employees = await getEmployeeProfiles();
         return res.status(200).json({ message: 'employees fetched', employees });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeProfileUpsert = async (req, res) => {
+    try {
+        const result = await saveEmployeeProfile({
+            employee_id: req.params.id || req.body.employee_id,
+            employee_name: req.body.employee_name || req.body.name,
+            phone: req.body.phone,
+            aadhar_card: req.body.aadhar_card || req.body.adharcard,
+            salary: req.body.salary,
+            notes: req.body.notes,
+            created_by_user_id: req.user.id || req.user.email,
+            created_by_name: req.user.name || req.user.username || null,
+        });
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'employee profile saved', employee: result.employee });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
     }

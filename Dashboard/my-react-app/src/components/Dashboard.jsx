@@ -99,7 +99,7 @@ const Dashboard = () => {
   }
 
   const visibleViews = isAdmin
-    ? ['overview', 'list', 'form', 'orders', 'stock', 'employees']
+    ? ['overview', 'list', 'form', 'orders', 'stock', 'employee-records', 'employee-permissions', 'employee-salary']
     : ['list', 'cart', 'orders'];
 
   useEffect(() => {
@@ -175,10 +175,30 @@ const Dashboard = () => {
               {isAdmin && (
                 <li className="nav-item">
                   <button
-                    className={`btn nav-link ${currentView === 'employees' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('employees')}
+                    className={`btn nav-link ${currentView === 'employee-records' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('employee-records')}
                   >
                     Employees
+                  </button>
+                </li>
+              )}
+              {isAdmin && (
+                <li className="nav-item">
+                  <button
+                    className={`btn nav-link ${currentView === 'employee-permissions' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('employee-permissions')}
+                  >
+                    Permissions
+                  </button>
+                </li>
+              )}
+              {isAdmin && (
+                <li className="nav-item">
+                  <button
+                    className={`btn nav-link ${currentView === 'employee-salary' ? 'active' : ''}`}
+                    onClick={() => handleViewChange('employee-salary')}
+                  >
+                    Salary
                   </button>
                 </li>
               )}
@@ -222,8 +242,12 @@ const Dashboard = () => {
         <Orders onNavigate={handleViewChange} userRole={userRole} />
       ) : currentView === 'stock' ? (
         <StockManager />
-      ) : currentView === 'employees' ? (
-        <EmployeeManager />
+      ) : currentView === 'employee-records' ? (
+        <EmployeeManager mode="records" />
+      ) : currentView === 'employee-permissions' ? (
+        <EmployeeManager mode="permissions" />
+      ) : currentView === 'employee-salary' ? (
+        <EmployeeManager mode="salary" />
       ) : null}
     </div>
   );

@@ -24,6 +24,8 @@ const Orders = ({ onNavigate, userRole }) => {
   const [customerFilter, setCustomerFilter] = useState('');
   const [sortField, setSortField] = useState('order_id');
   const [sortDirection, setSortDirection] = useState('desc');
+  const [orderDateFilter, setOrderDateFilter] = useState('');
+  const [orderScope, setOrderScope] = useState('active');
   const [paymentInputs, setPaymentInputs] = useState({});
   const [actionSelections, setActionSelections] = useState({});
   const [expandedGroups, setExpandedGroups] = useState({});
@@ -431,15 +433,33 @@ const Orders = ({ onNavigate, userRole }) => {
 
   const filteredOrders = useMemo(() => {
     const normalizedCustomerFilter = customerFilter.trim().toLowerCase();
+    const normalizedDateFilter = orderDateFilter.trim();
 
     return [...orders]
       .filter((order) => {
+        const orderStatus = String(order.status || '').toLowerCase();
+        const isCancelled = orderStatus === 'cancelled';
+
+        if (orderScope === 'active' && isCancelled) {
+          return false;
+        }
+        if (orderScope === 'cancelled' && !isCancelled) {
+          return false;
+        }
+
         if (statusFilter !== 'all') {
           const paymentStatus = getPaymentStatus(order).toLowerCase().replace(' ', '_');
           if (statusFilter === 'paid' && paymentStatus !== 'paid') return false;
           if (statusFilter === 'unpaid' && paymentStatus !== 'unpaid') return false;
           if (statusFilter === 'partial' && paymentStatus !== 'partial_paid') return false;
           if (statusFilter === 'cancelled' && paymentStatus !== 'cancelled') return false;
+        }
+
+        if (normalizedDateFilter) {
+          const createdDate = order.created_at ? String(order.created_at).slice(0, 10) : '';
+          if (createdDate !== normalizedDateFilter) {
+            return false;
+          }
         }
 
         if (!normalizedCustomerFilter) {
@@ -477,7 +497,7 @@ const Orders = ({ onNavigate, userRole }) => {
         const compare = left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
         return sortDirection === 'asc' ? compare : -compare;
       });
-  }, [orders, statusFilter, customerFilter, sortField, sortDirection]);
+  }, [orders, statusFilter, customerFilter, sortField, sortDirection, orderDateFilter, orderScope]);
 
   const orderGroups = useMemo(() => {
     const groups = {};
@@ -606,12 +626,31 @@ const Orders = ({ onNavigate, userRole }) => {
               value={customerFilter}
               onChange={(e) => setCustomerFilter(e.target.value)}
             />
+            <input
+              type="date"
+              className="form-control"
+              style={{ minWidth: '180px' }}
+              value={orderDateFilter}
+              onChange={(e) => setOrderDateFilter(e.target.value)}
+            />
+            <div className="btn-group" role="group" aria-label="Order scope switch">
+              <button className={`btn btn-sm ${orderScope === 'active' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setOrderScope('active')}>
+                Active
+              </button>
+              <button className={`btn btn-sm ${orderScope === 'cancelled' ? 'btn-primary' : 'btn-outline-primary'}`} onClick={() => setOrderScope('cancelled')}>
+                Cancelled
+              </button>
+            </div>
           </>
         )}
       </div>
 
       <h2>{adminView ? 'All Orders' : 'My Orders'}</h2>
       {message && <div className="alert alert-info">{message}</div>}
+
+      {adminView && orderScope === 'cancelled' && (
+        <div className="alert alert-warning">You are viewing cancelled orders only.</div>
+      )}
 
       {filteredOrders.length === 0 ? (
         <div className="alert alert-warning">No orders found</div>

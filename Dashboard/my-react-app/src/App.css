@@ -10,7 +10,7 @@
 .dashboard-shell {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(255, 213, 79, 0.35), transparent 24%),
+    radial-gradient(circle at top left, rgba(255, 213, 79, 0.35), transparent 24%),      
     radial-gradient(circle at top right, rgba(198, 40, 40, 0.10), transparent 22%),
     linear-gradient(180deg, #fffdf7 0%, #fff6de 100%);
   color: var(--brand-text);
@@ -91,5 +91,46 @@
   color: var(--brand-red-dark);
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.dashboard-shell .product-row-card {
+  border: 1px solid rgba(198, 40, 40, 0.10);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.dashboard-shell .product-thumb {
+  flex: 0 0 auto;
+  width: 88px;
+  height: 88px;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, rgba(198, 40, 40, 0.14), rgba(255, 213, 79, 0.42));
+  display: grid;
+  place-items: center;
+}
+
+.dashboard-shell .product-thumb-inner {
+  width: 60px;
+  height: 60px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: var(--brand-red-dark);
+  font-size: 1.5rem;
+}
+
+.dashboard-shell .product-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  color: rgba(43, 29, 14, 0.82);
+  font-size: 0.95rem;
+}
+
+.dashboard-shell .product-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 

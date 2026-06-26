@@ -39,6 +39,21 @@ export const ensureAdminPortalSchema = async () => {
     `);
 
     await db.query(`
+        CREATE TABLE IF NOT EXISTS employee_profiles (
+            employee_id TEXT PRIMARY KEY,
+            employee_name TEXT NOT NULL,
+            phone TEXT,
+            aadhar_card TEXT,
+            salary NUMERIC(12,2) NOT NULL DEFAULT 0,
+            notes TEXT,
+            created_by_user_id TEXT,
+            created_by_name TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        )
+    `);
+
+    await db.query(`
         CREATE TABLE IF NOT EXISTS employee_permissions (
             employee_id TEXT PRIMARY KEY,
             employee_name TEXT,
@@ -87,6 +102,34 @@ export const ensureAdminPortalSchema = async () => {
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS salary_adjustment NUMERIC(12,2) NOT NULL DEFAULT 0");
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS notes TEXT");
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()");
+
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS employee_name TEXT NOT NULL DEFAULT 'Employee'");
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS phone TEXT");
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS aadhar_card TEXT");
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS salary NUMERIC(12,2) NOT NULL DEFAULT 0");
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS notes TEXT");
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS created_by_user_id TEXT");
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS created_by_name TEXT");
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()");
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS salary_ledger (
+            salary_entry_id SERIAL PRIMARY KEY,
+            employee_id TEXT NOT NULL,
+            employee_name TEXT NOT NULL,
+            amount NUMERIC(12,2) NOT NULL,
+            payment_note TEXT,
+            period_start DATE,
+            period_end DATE,
+            recorded_by_user_id TEXT,
+            recorded_by_name TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    `);
+
+    await db.query("ALTER TABLE salary_ledger ADD COLUMN IF NOT EXISTS period_start DATE");
+    await db.query("ALTER TABLE salary_ledger ADD COLUMN IF NOT EXISTS period_end DATE");
+    await db.query("ALTER TABLE salary_ledger ADD COLUMN IF NOT EXISTS payment_note TEXT");
 
     isAdminPortalSchemaReady = true;
 };
@@ -195,12 +238,16 @@ export const listEmployees = async () => {
     await ensureAdminPortalSchema();
     const result = await db.query(`
         SELECT
-            ep.employee_id AS id,
-            COALESCE(ep.employee_name, u.name, 'Employee') AS name,
-            COALESCE(ep.employee_email, u.email, '') AS email,
-            u.phone,
-            u.role AS user_role,
-            COALESCE(ep.role, 'employee') AS employee_role,
+            p.employee_id AS id,
+            p.employee_name AS name,
+            p.phone,
+            p.aadhar_card,
+            p.salary,
+            p.notes,
+            p.created_by_user_id,
+            p.created_by_name,
+            p.created_at,
+            p.updated_at,
             COALESCE(ep.can_create_product, FALSE) AS can_create_product,
             COALESCE(ep.can_delete_product, FALSE) AS can_delete_product,
             COALESCE(ep.can_update_product, FALSE) AS can_update_product,
@@ -208,15 +255,46 @@ export const listEmployees = async () => {
             COALESCE(ep.can_manage_stock, FALSE) AS can_manage_stock,
             COALESCE(ep.can_manage_employees, FALSE) AS can_manage_employees,
             COALESCE(ep.can_manage_salary, FALSE) AS can_manage_salary,
-            COALESCE(ep.base_salary, 0) AS base_salary,
-            COALESCE(ep.salary_adjustment, 0) AS salary_adjustment,
-            ep.notes,
-            ep.updated_at
-        FROM employee_permissions ep
-        LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(ep.employee_id AS TEXT)
-        ORDER BY COALESCE(ep.employee_name, u.name, 'Employee') ASC, CAST(ep.employee_id AS TEXT) ASC
+            COALESCE(ep.role, 'employee') AS employee_role
+        FROM employee_profiles p
+        LEFT JOIN employee_permissions ep ON CAST(ep.employee_id AS TEXT) = CAST(p.employee_id AS TEXT)
+        ORDER BY p.employee_name ASC, CAST(p.employee_id AS TEXT) ASC
     `);
 
+    return result.rows || [];
+};
+
+export const saveEmployeeProfile = async ({ employee_id, employee_name, phone, aadhar_card, salary, notes, created_by_user_id, created_by_name }) => {
+    await ensureAdminPortalSchema();
+    if (!employee_id || !employee_name) {
+        return { ok: false, message: 'Employee id and name are required' };
+    }
+
+    const inserted = await db.query(
+        `INSERT INTO employee_profiles(
+            employee_id, employee_name, phone, aadhar_card, salary, notes, created_by_user_id, created_by_name, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+        ON CONFLICT (employee_id) DO UPDATE SET
+            employee_name = EXCLUDED.employee_name,
+            phone = EXCLUDED.phone,
+            aadhar_card = EXCLUDED.aadhar_card,
+            salary = EXCLUDED.salary,
+            notes = EXCLUDED.notes,
+            updated_at = NOW()
+        RETURNING *`,
+        [String(employee_id), employee_name, phone || null, aadhar_card || null, Number(salary || 0), notes || null, created_by_user_id || null, created_by_name || null]
+    );
+
+    return { ok: true, employee: inserted.rows?.[0] || null };
+};
+
+export const getEmployeeProfiles = async () => {
+    await ensureAdminPortalSchema();
+    const result = await db.query(`
+        SELECT employee_id, employee_name, phone, aadhar_card, salary, notes, created_by_user_id, created_by_name, created_at, updated_at
+        FROM employee_profiles
+        ORDER BY employee_name ASC, employee_id ASC
+    `);
     return result.rows || [];
 };
 
@@ -243,7 +321,7 @@ export const getSalarySummary = async ({ employeeId = null, startDate = null, en
         `SELECT
             COALESCE(SUM(amount), 0) AS total_salary_spend,
             COUNT(*) AS adjustment_count
-         FROM salary_adjustments
+         FROM salary_ledger
          ${whereClause}`,
         params
     );
@@ -342,76 +420,72 @@ export const adjustEmployeeSalary = async (employeeId, amount, reason, adjustmen
     }
 
     const employee = await db.query(
-        "SELECT id, name FROM users WHERE CAST(id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
+        "SELECT employee_id, employee_name FROM employee_profiles WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
         [employeeId]
     );
     const employeeRecord = employee.rows[0] || null;
     if (!employeeRecord) {
-        const fallbackEmployee = await db.query(
-            "SELECT employee_id, employee_name FROM employee_permissions WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
-            [employeeId]
-        );
-        if (fallbackEmployee.rows.length === 0) {
-            return { ok: false, message: "Employee not found" };
-        }
-        employee.rows = [{ id: fallbackEmployee.rows[0].employee_id, name: fallbackEmployee.rows[0].employee_name || 'Employee' }];
+        return { ok: false, message: "Employee not found" };
     }
 
     const current = await db.query(
-        "SELECT base_salary, salary_adjustment FROM employee_permissions WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
+        "SELECT salary AS base_salary FROM employee_profiles WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
         [employeeId]
     );
 
     const currentBase = Number(current.rows?.[0]?.base_salary || 0);
-    const currentAdjustment = Number(current.rows?.[0]?.salary_adjustment || 0);
-    const nextAdjustment = Number((currentAdjustment + delta).toFixed(2));
+    const nextBase = Number((currentBase + delta).toFixed(2));
 
     await db.query(
-        `INSERT INTO salary_adjustments(employee_id, employee_name, amount, reason, adjustment_type, created_by_user_id, created_by_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [String(employeeId), employee.rows[0].name, delta, reason || null, adjustmentType || (delta > 0 ? 'overtime' : 'deduction'), createdByUserId || null, createdByName || null]
+        `INSERT INTO salary_ledger(employee_id, employee_name, amount, payment_note, period_start, period_end, recorded_by_user_id, recorded_by_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [String(employeeId), employeeRecord.employee_name, delta, reason || null, null, null, createdByUserId || null, createdByName || null]
     );
 
     const updated = await db.query(
+        `UPDATE employee_profiles SET salary=$2, updated_at=NOW() WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT) RETURNING *`,
+        [String(employeeId), nextBase]
+    );
+
+    await db.query(
         `INSERT INTO employee_permissions(
             employee_id, employee_name, employee_email, role,
             can_create_product, can_delete_product, can_update_product,
             can_apply_discount, can_manage_stock, can_manage_employees,
             can_manage_salary, base_salary, salary_adjustment, updated_at
-        ) VALUES ($1,$2,$3,$4,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,$5,$6,NOW())
+        ) VALUES ($1,$2,$3,$4,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,$5,0,NOW())
         ON CONFLICT (employee_id) DO UPDATE SET
             employee_name = EXCLUDED.employee_name,
             employee_email = EXCLUDED.employee_email,
             role = EXCLUDED.role,
             base_salary = EXCLUDED.base_salary,
-            salary_adjustment = EXCLUDED.salary_adjustment,
             updated_at = NOW()
         RETURNING *`,
-        [String(employeeId), employee.rows[0].name, null, 'employee', currentBase, nextAdjustment]
+        [String(employeeId), employeeRecord.employee_name, null, 'employee', nextBase]
     );
 
     const record = updated.rows?.[0] || {
         employee_id: String(employeeId),
-        employee_name: employee.rows[0].name,
-        base_salary: currentBase,
-        salary_adjustment: nextAdjustment,
+        employee_name: employeeRecord.employee_name,
+        base_salary: nextBase,
+        salary_adjustment: 0,
     };
 
     return {
         ok: true,
         employee: record,
-        current_salary: Number(currentBase) + Number(nextAdjustment),
-        salary_adjustment: nextAdjustment,
+        current_salary: nextBase,
+        salary_adjustment: delta,
     };
 };
 
 export const getSalaryHistory = async (employeeId) => {
     await ensureAdminPortalSchema();
     const result = await db.query(
-        `SELECT salary_adjustment_id, employee_id, employee_name, amount, reason, adjustment_type, created_by_user_id, created_by_name, created_at
-         FROM salary_adjustments
+        `SELECT salary_entry_id, employee_id, employee_name, amount, payment_note, period_start, period_end, recorded_by_user_id, recorded_by_name, created_at
+         FROM salary_ledger
          WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT)
-         ORDER BY created_at DESC, salary_adjustment_id DESC`,
+         ORDER BY created_at DESC, salary_entry_id DESC`,
         [employeeId]
     );
 
