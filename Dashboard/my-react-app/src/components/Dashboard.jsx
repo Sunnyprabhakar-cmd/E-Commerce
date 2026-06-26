@@ -7,6 +7,7 @@ import Orders from './Orders';
 import AdminOverview from './AdminOverview';
 import StockManager from './StockManager';
 import EmployeeManager from './EmployeeManager';
+import api from '../api/client';
 
 const decodeToken = (token) => {
   try {
@@ -29,6 +30,7 @@ const Dashboard = () => {
     return localStorage.getItem('currentView') || (userRole === 'admin' ? 'overview' : 'list');
   });
   const [editingProduct, setEditingProduct] = useState(null);
+  const [cartCount, setCartCount] = useState(0);
 
   const canManageProducts = userRole === 'admin' || permissions.can_create_product || permissions.can_update_product || permissions.can_delete_product;
   const canManageStock = userRole === 'admin' || permissions.can_manage_stock;
@@ -57,6 +59,23 @@ const Dashboard = () => {
     setSession(null);
     setCurrentView('list');
     setEditingProduct(null);
+    setCartCount(0);
+  };
+
+  const refreshCartCount = async () => {
+    if (isAdmin) {
+      setCartCount(0);
+      return;
+    }
+
+    try {
+      const response = await api.get('/cartInfo');
+      const items = Array.isArray(response.data?.data) ? response.data.data : [];
+      const totalItems = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      setCartCount(totalItems);
+    } catch {
+      setCartCount(0);
+    }
   };
 
   const handleEdit = (product) => {
@@ -90,6 +109,10 @@ const Dashboard = () => {
       localStorage.setItem('currentView', fallbackView);
     }
   }, [currentView, isAdmin]);
+
+  useEffect(() => {
+    refreshCartCount();
+  }, [isAdmin, isLoggedIn]);
 
   return (
     <div className="dashboard-shell">
@@ -127,7 +150,7 @@ const Dashboard = () => {
                     className={`btn nav-link ${currentView === 'cart' ? 'active' : ''}`}
                     onClick={() => handleViewChange('cart')}
                   >
-                    🛒 Cart
+                    Cart{cartCount > 0 ? ` (${cartCount})` : ''}
                   </button>
                 </li>
               )}
@@ -180,7 +203,11 @@ const Dashboard = () => {
       {currentView === 'overview' ? (
         <AdminOverview onNavigate={handleViewChange} />
       ) : currentView === 'list' ? (
-        <ProductList onEdit={handleEdit} canManageProducts={canManageProducts} />
+        <ProductList
+          onEdit={handleEdit}
+          canManageProducts={canManageProducts}
+          onCartChange={refreshCartCount}
+        />
       ) : currentView === 'form' ? (
         <ProductForm
           key={editingProduct?.id || 'new'}
@@ -190,7 +217,7 @@ const Dashboard = () => {
           onCancel={handleCancel}
         />
       ) : currentView === 'cart' ? (
-        <Cart onNavigate={handleViewChange} />
+        <Cart onNavigate={handleViewChange} onCartChange={refreshCartCount} />
       ) : currentView === 'orders' ? (
         <Orders onNavigate={handleViewChange} userRole={userRole} />
       ) : currentView === 'stock' ? (

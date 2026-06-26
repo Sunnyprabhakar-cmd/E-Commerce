@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 
-const Cart = ({ onNavigate }) => {
+const Cart = ({ onNavigate, onCartChange }) => {
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -29,6 +29,7 @@ const Cart = ({ onNavigate }) => {
       const data = response.data?.data;
       const items = Array.isArray(data) ? data : [];
       setCartItems(items);
+      onCartChange && onCartChange();
       await fetchWalletBalance();
     } catch (error) {
       console.error('Error fetching cart:', error);
@@ -51,6 +52,7 @@ const Cart = ({ onNavigate }) => {
         quantity: 1
       });
       setMessage('Product added to cart!');
+      onCartChange && onCartChange();
       fetchCartItems();
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Error adding to cart';
@@ -64,7 +66,8 @@ const Cart = ({ onNavigate }) => {
         product_id: productId
       });
       setMessage('Product removed from cart!');
-      fetchCartItems();
+      onCartChange && onCartChange();
+      await fetchCartItems();
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Error removing from cart';
       setMessage(errorMsg);
@@ -78,7 +81,8 @@ const Cart = ({ onNavigate }) => {
         operation: operation
       });
       setMessage('Cart updated!');
-      fetchCartItems();
+      onCartChange && onCartChange();
+      await fetchCartItems();
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Error updating cart';
       setMessage(errorMsg);
@@ -138,7 +142,8 @@ const Cart = ({ onNavigate }) => {
       await api.post('/deleteProductFromCart', { product_id: item.product_id });
       setMessage(isPaid ? 'Order placed and paid successfully!' : 'Order placed successfully with deferred payment!');
       closeOrderDialog();
-      fetchCartItems();
+      await fetchCartItems();
+      onCartChange && onCartChange();
     } catch (error) {
       if (isPaid) {
         try {
@@ -230,7 +235,8 @@ const Cart = ({ onNavigate }) => {
           : 'Checkout complete! All cart items were ordered with deferred payment.'
       );
       closeCheckoutDialog();
-      fetchCartItems();
+      await fetchCartItems();
+      onCartChange && onCartChange();
       onNavigate && onNavigate('orders');
     } catch (error) {
       if (checkoutPaymentMethod === 'wallet') {

@@ -1,23 +1,28 @@
-.Counter {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-
+:root {
+  --brand-red: #c62828;
+  --brand-red-dark: #8e1b1b;
+  --brand-gold: #ffd54f;
+  --brand-cream: #fff8e7;
+  --brand-surface: #ffffff;
+  --brand-text: #2b1d0e;
 }
 
 .dashboard-shell {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 32%),
-    radial-gradient(circle at top right, rgba(244, 114, 182, 0.08), transparent 24%),
-    #f4f7fb;
+    radial-gradient(circle at top left, rgba(255, 213, 79, 0.35), transparent 24%),
+    radial-gradient(circle at top right, rgba(198, 40, 40, 0.10), transparent 22%),
+    linear-gradient(180deg, #fffdf7 0%, #fff6de 100%);
+  color: var(--brand-text);
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
 .dashboard-shell .navbar {
   position: sticky;
   top: 0;
   z-index: 10;
+  background: linear-gradient(90deg, var(--brand-red) 0%, #e53935 56%, #f57c00 100%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .dashboard-shell .navbar-brand {
@@ -25,9 +30,20 @@
   letter-spacing: 0.02em;
 }
 
+.dashboard-shell .nav-link,
+.dashboard-shell .navbar-text {
+  color: #fff !important;
+}
+
+.dashboard-shell .nav-link.active {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
 .dashboard-shell .card {
   border: 0;
   border-radius: 1rem;
+  background: var(--brand-surface);
 }
 
 .dashboard-shell .card.shadow-sm {
@@ -36,5 +52,44 @@
 
 .dashboard-shell .list-group-item.active {
   border-color: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, var(--brand-red), #ef5350);
+  color: #fff;
+}
+
+.dashboard-shell .btn-primary,
+.dashboard-shell .btn-success {
+  background: var(--brand-red);
+  border-color: var(--brand-red);
+}
+
+.dashboard-shell .btn-primary:hover,
+.dashboard-shell .btn-success:hover {
+  background: var(--brand-red-dark);
+  border-color: var(--brand-red-dark);
+}
+
+.dashboard-shell .btn-outline-primary {
+  color: var(--brand-red);
+  border-color: var(--brand-red);
+}
+
+.dashboard-shell .btn-outline-primary:hover {
+  background: var(--brand-red);
+  border-color: var(--brand-red);
+}
+
+.dashboard-shell .cart-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.35rem;
+  margin-left: 0.35rem;
+  border-radius: 999px;
+  background: var(--brand-gold);
+  color: var(--brand-red-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 

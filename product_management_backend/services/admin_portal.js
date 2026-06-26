@@ -220,14 +220,35 @@ export const listEmployees = async () => {
     return result.rows || [];
 };
 
-export const listUsers = async () => {
+export const getSalarySummary = async ({ employeeId = null, startDate = null, endDate = null } = {}) => {
     await ensureAdminPortalSchema();
-    const result = await db.query(`
-        SELECT id, name, email, phone, role
-        FROM users
-        ORDER BY name ASC, id ASC
-    `);
-    return result.rows || [];
+    const conditions = [];
+    const params = [];
+
+    if (employeeId) {
+        params.push(String(employeeId));
+        conditions.push(`CAST(employee_id AS TEXT) = CAST($${params.length} AS TEXT)`);
+    }
+    if (startDate) {
+        params.push(startDate);
+        conditions.push(`created_at::date >= $${params.length}::date`);
+    }
+    if (endDate) {
+        params.push(endDate);
+        conditions.push(`created_at::date <= $${params.length}::date`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await db.query(
+        `SELECT
+            COALESCE(SUM(amount), 0) AS total_salary_spend,
+            COUNT(*) AS adjustment_count
+         FROM salary_adjustments
+         ${whereClause}`,
+        params
+    );
+
+    return result.rows?.[0] || { total_salary_spend: 0, adjustment_count: 0 };
 };
 
 export const saveEmployeePermissions = async (employeeId, payload = {}) => {

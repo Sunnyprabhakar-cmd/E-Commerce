@@ -86,6 +86,6 @@ export const fetchProductById = async (idOrName) => {
 
 export const removeProduct = async (id) => {
     await ensureProductSchema();
-    const removed = await db.query("DELETE FROM products WHERE id=$1", [id]);
+    const removed = await db.query("DELETE FROM products WHERE CAST(id AS TEXT)=CAST($1 AS TEXT)", [id]);
     return removed.rowCount > 0;
 };

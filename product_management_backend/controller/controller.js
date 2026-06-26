@@ -23,7 +23,7 @@ import {
     getStockEntries,
     createStockEntry,
     listEmployees,
-    listUsers,
+    getSalarySummary,
     saveEmployeePermissions,
     adjustEmployeeSalary,
     getSalaryHistory,
@@ -530,10 +530,14 @@ export const employeeList = async (_req, res) => {
     }
 };
 
-export const userList = async (_req, res) => {
+export const salarySummary = async (req, res) => {
     try {
-        const users = await listUsers();
-        return res.status(200).json({ message: 'users fetched', users });
+        const summary = await getSalarySummary({
+            employeeId: req.query.employeeId || null,
+            startDate: req.query.startDate || null,
+            endDate: req.query.endDate || null,
+        });
+        return res.status(200).json({ message: 'salary summary fetched', summary });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
     }

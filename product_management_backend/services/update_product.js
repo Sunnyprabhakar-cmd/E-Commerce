@@ -35,7 +35,7 @@ const update_product = (req, res) => {
 
         values.push(id);
         const updated = await db.query(
-            `UPDATE products SET ${fields.join(",")} WHERE id=$${values.length} RETURNING id,name,price,category,piece,availability`,
+            `UPDATE products SET ${fields.join(",")} WHERE CAST(id AS TEXT)=CAST($${values.length} AS TEXT) RETURNING id,name,price,category,piece,availability`,
             values
         );
 

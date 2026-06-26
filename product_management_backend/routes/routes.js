@@ -4,7 +4,7 @@ import {createProduct, getAllProduct,deleteProduct,
     addProductIntoCart,deleteProductIntoCart,updateProductIntoCart,
     cartInfo,addToOrders,removeOrder,orderDetail,adminOrderDetail,adminOrderAction,getOrderActionHistory,
     avlBalance,
-    balance_sub,wallet_details,add_balancee,adminSummary,stockList,stockCreate,employeeList,employeeUpsert,employeeSalaryAdjust,employeeSalaryHistory} 
+    balance_sub,wallet_details,add_balancee,adminSummary,stockList,stockCreate,employeeList,employeeUpsert,employeeSalaryAdjust,employeeSalaryHistory,salarySummary} 
     from "../controller/controller.js";
 import  update_product  from "../services/update_product.js";
 import  registeration  from "../login&registration/register.js";
@@ -39,7 +39,7 @@ router.get("/admin/summary",auth,isAdmin,adminSummary);
 router.get("/admin/stock",auth,requirePermission("can_manage_stock"),stockList);
 router.post("/admin/stock",auth,requirePermission("can_manage_stock"),stockCreate);
 router.get("/admin/employees",auth,isAdmin,employeeList);
-router.get("/admin/users",auth,isAdmin,userList);
+router.get("/admin/salary-summary",auth,isAdmin,salarySummary);
 router.post("/admin/employees/:id",auth,isAdmin,employeeUpsert);
 router.post("/admin/employees/:id/salary",auth,isAdmin,employeeSalaryAdjust);
 router.get("/admin/employees/:id/salary",auth,isAdmin,employeeSalaryHistory);

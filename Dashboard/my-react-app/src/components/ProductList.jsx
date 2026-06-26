@@ -3,7 +3,7 @@ import api from '../api/client';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
-const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
+const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState('');
@@ -76,7 +76,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
     try {
       await api.delete('/', { data: { id } });
       setMessage('Product deleted successfully.');
-      fetchProducts(currentPage, activeMode);
+      fetchProducts(currentPage, activeMode, pageSize);
     } catch (error) {
       const apiMessage = error.response?.data?.message || error.response?.data;
       setMessage(typeof apiMessage === 'string' ? apiMessage : 'Error deleting product');
@@ -90,6 +90,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
         quantity: 1
       });
       setMessage('Product added to cart!');
+      onCartChange && onCartChange();
     } catch (error) {
       const apiMessage = error.response?.data?.message || 'Error adding to cart';
       setMessage(typeof apiMessage === 'string' ? apiMessage : 'Error adding to cart');
@@ -131,12 +132,14 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
     if (nextPage === currentPage) {
       return;
     }
-    fetchProducts(nextPage);
+    fetchProducts(nextPage, activeMode, pageSize);
   };
 
   useEffect(() => {
-    fetchProducts(1, 'list');
-  }, [fetchProducts]);
+    fetchProducts(1, 'list', pageSize);
+    // Intentionally run only once on mount; subsequent reloads are user-driven.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) return <div className="text-center mt-5">Loading...</div>;
 
@@ -150,7 +153,7 @@ const ProductList = ({ onEdit, onAddToCart, canManageProducts }) => {
           <input
             type="text"
             className="form-control"
-            placeholder="Search by category"
+            placeholder="Search by product name, category, or id"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />

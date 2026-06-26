@@ -651,8 +651,11 @@ const Orders = ({ onNavigate, userRole }) => {
                         <button
                           className="btn btn-sm btn-outline-primary"
                           onClick={() => {
+                            const willExpand = !expandedGroups[group.groupId];
                             toggleGroupExpansion(group.groupId);
-                            handleOpenGroupDetails(group);
+                            if (willExpand) {
+                              handleOpenGroupDetails(group);
+                            }
                           }}
                         >
                           {expandedGroups[group.groupId] ? 'Hide items' : 'Show items'}

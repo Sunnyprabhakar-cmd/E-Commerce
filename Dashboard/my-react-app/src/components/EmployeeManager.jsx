@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 
+const money = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+});
+
 const emptyPermissions = {
   can_create_product: false,
   can_delete_product: false,
@@ -13,24 +19,28 @@ const emptyPermissions = {
 
 const EmployeeManager = () => {
   const [employees, setEmployees] = useState([]);
-  const [users, setUsers] = useState([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [permissions, setPermissions] = useState(emptyPermissions);
-  const [baseSalary, setBaseSalary] = useState('0');
-  const [salaryDelta, setSalaryDelta] = useState('');
-  const [salaryReason, setSalaryReason] = useState('');
-  const [salaryType, setSalaryType] = useState('overtime');
   const [salaryHistory, setSalaryHistory] = useState([]);
+  const [salarySummary, setSalarySummary] = useState({ total_salary_spend: 0, adjustment_count: 0 });
+  const [salaryStartDate, setSalaryStartDate] = useState('');
+  const [salaryEndDate, setSalaryEndDate] = useState('');
   const [message, setMessage] = useState('');
 
   const fetchEmployees = async () => {
     try {
-      const [employeeResponse, userResponse] = await Promise.all([
+      const [employeeResponse, summaryResponse] = await Promise.all([
         api.get('/admin/employees'),
-        api.get('/admin/users'),
+        api.get('/admin/salary-summary', {
+          params: {
+            employeeId: selectedEmployeeId || undefined,
+            startDate: salaryStartDate || undefined,
+            endDate: salaryEndDate || undefined,
+          },
+        }),
       ]);
       setEmployees(Array.isArray(employeeResponse.data?.employees) ? employeeResponse.data.employees : []);
-      setUsers(Array.isArray(userResponse.data?.users) ? userResponse.data.users : []);
+      setSalarySummary(summaryResponse.data?.summary || { total_salary_spend: 0, adjustment_count: 0 });
     } catch (error) {
       setMessage(error.response?.data?.message || 'Failed to load employees');
     }
@@ -59,26 +69,20 @@ const EmployeeManager = () => {
     [employees, selectedEmployeeId]
   );
 
-  const promotedUsers = useMemo(
-    () => new Set(employees.map((employee) => String(employee.id))),
-    [employees]
-  );
-
-  const availableUsers = useMemo(
-    () => users.filter((user) => !promotedUsers.has(String(user.id))),
-    [promotedUsers, users]
-  );
-
-  const selectedUser = useMemo(
-    () => users.find((user) => String(user.id) === String(selectedEmployeeId)),
-    [selectedEmployeeId, users]
-  );
+  const selectedHistory = useMemo(() => {
+    return salaryHistory.filter((item) => {
+      const itemDate = item.created_at ? item.created_at.slice(0, 10) : '';
+      if (salaryStartDate && itemDate < salaryStartDate) return false;
+      if (salaryEndDate && itemDate > salaryEndDate) return false;
+      return true;
+    });
+  }, [salaryEndDate, salaryHistory, salaryStartDate]);
 
   useEffect(() => {
     if (!selectedEmployee) {
       setPermissions(emptyPermissions);
-      setBaseSalary('0');
       setSalaryHistory([]);
+      setSalarySummary({ total_salary_spend: 0, adjustment_count: 0 });
       return;
     }
 
@@ -91,9 +95,21 @@ const EmployeeManager = () => {
       can_manage_employees: Boolean(selectedEmployee.can_manage_employees),
       can_manage_salary: Boolean(selectedEmployee.can_manage_salary),
     });
-    setBaseSalary(String(selectedEmployee.base_salary ?? 0));
     fetchSalaryHistory(selectedEmployee.id);
   }, [selectedEmployee]);
+
+  useEffect(() => {
+    if (!selectedEmployeeId) return;
+    fetchEmployees();
+    fetchSalaryHistory(selectedEmployeeId);
+  }, [salaryStartDate, salaryEndDate]);
+
+  useEffect(() => {
+    if (!selectedEmployeeId) {
+      return;
+    }
+    fetchEmployees();
+  }, [selectedEmployeeId]);
 
   const handlePermissionChange = (event) => {
     const { name, checked } = event.target;
@@ -109,7 +125,6 @@ const EmployeeManager = () => {
     try {
       await api.post(`/admin/employees/${selectedEmployeeId}`, {
         ...permissions,
-        base_salary: Number(baseSalary || 0),
       });
       setMessage('Employee permissions saved');
       await fetchEmployees();
@@ -119,32 +134,31 @@ const EmployeeManager = () => {
     }
   };
 
-  const handleSalaryAdjust = async () => {
-    if (!selectedEmployeeId) {
+  const handleOpenSalaryHistory = () => {
+    if (!selectedEmployee) {
       setMessage('Select an employee first');
       return;
     }
 
-    const amount = Number(salaryDelta);
-    if (Number.isNaN(amount) || amount === 0) {
-      setMessage('Enter a non-zero salary adjustment');
+    const historyRows = selectedHistory.map((item) => ({
+      date: item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A',
+      amount: Number(item.amount || 0).toFixed(2),
+      type: item.adjustment_type || 'N/A',
+      reason: item.reason || '—',
+      by: item.created_by_name || item.created_by_user_id || 'N/A',
+    }));
+    const totalSalarySpend = selectedHistory.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const detailWindow = window.open('', '_blank');
+    if (!detailWindow) {
+      setMessage('Unable to open salary history window. Check popup settings.');
       return;
     }
 
-    try {
-      await api.post(`/admin/employees/${selectedEmployeeId}/salary`, {
-        amount,
-        reason: salaryReason,
-        adjustment_type: salaryType,
-      });
-      setMessage('Salary updated');
-      setSalaryDelta('');
-      setSalaryReason('');
-      await fetchEmployees();
-      await fetchSalaryHistory(selectedEmployeeId);
-    } catch (error) {
-      setMessage(error.response?.data?.message || 'Failed to update salary');
-    }
+    const rowsHtml = historyRows.map((row) => `<tr><td>${row.date}</td><td>${row.amount}</td><td>${row.type}</td><td>${row.reason}</td><td>${row.by}</td></tr>`).join('');
+    const title = `${selectedEmployee.name} salary history`;
+    detailWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial,sans-serif;margin:0;background:#fff4e6;color:#2b1d0e;}header{background:#c62828;color:#fff;padding:20px 24px;}main{max-width:1100px;margin:0 auto;padding:24px;} .summary{display:flex;gap:16px;flex-wrap:wrap;margin:18px 0;} .card{background:#fff;border:1px solid #f3d18c;border-radius:14px;padding:16px 18px;min-width:180px;box-shadow:0 10px 24px rgba(198,40,40,.08);} .controls{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 20px;} button,a{border:0;border-radius:10px;padding:10px 14px;cursor:pointer;text-decoration:none;font-weight:700;} .primary{background:#c62828;color:#fff;} .secondary{background:#ffd54f;color:#7f1d1d;} .outline{background:#fff;border:1px solid #c62828;color:#c62828;} table{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden;} th,td{padding:12px 14px;border-bottom:1px solid #f1e2c5;text-align:left;} th{background:#fff7e6;} </style></head><body><header><h1>${selectedEmployee.name}</h1><div>${selectedEmployee.phone || 'No phone'} · ${selectedEmployee.email || 'No email'}</div></header><main><div class="summary"><div class="card"><div>Total salary spend</div><strong>${money.format(totalSalarySpend)}</strong></div><div class="card"><div>Entries</div><strong>${historyRows.length}</strong></div><div class="card"><div>Period</div><strong>${salaryStartDate || 'All'} to ${salaryEndDate || 'All'}</strong></div></div><div class="controls"><a class="primary" download="salary-history.doc" href="data:application/msword;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html><html><body><table border='1'><tr><th>Date</th><th>Amount</th><th>Type</th><th>Reason</th><th>By</th></tr>${rowsHtml}</table></body></html>`) }">Export Doc</a><a class="secondary" download="salary-history.xls" href="data:application/vnd.ms-excel;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html><html><body><table border='1'><tr><th>Date</th><th>Amount</th><th>Type</th><th>Reason</th><th>By</th></tr>${rowsHtml}</table></body></html>`) }">Export Excel</a><a class="outline" download="salary-history.csv" href="data:text/csv;charset=utf-8,${encodeURIComponent(['Date,Amount,Type,Reason,By', ...historyRows.map((row) => [row.date,row.amount,row.type,row.reason,row.by].map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n'))}">Export CSV</a><button class="outline" onclick="window.print()">Print / Save PDF</button></div><table><thead><tr><th>Date</th><th>Amount</th><th>Type</th><th>Reason</th><th>By</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="5">No history found</td></tr>'}</tbody></table></main></body></html>`);
+    detailWindow.document.close();
+    detailWindow.focus();
   };
 
   return (
@@ -152,12 +166,40 @@ const EmployeeManager = () => {
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
           <h2 className="mb-1">Employee Access Table</h2>
-          <p className="text-muted mb-0">Manage dedicated employee records, permissions, and salary adjustments.</p>
+          <p className="text-muted mb-0">Manage dedicated employee records, permissions, and salary history.</p>
         </div>
         <button className="btn btn-outline-primary" onClick={fetchEmployees}>Refresh</button>
       </div>
 
       {message && <div className="alert alert-info">{message}</div>}
+
+      <div className="row g-3 mb-4">
+        <div className="col-md-4">
+          <div className="card shadow-sm h-100">
+            <div className="card-body">
+              <div className="text-muted small">Total salary spent</div>
+              <div className="fs-3 fw-semibold text-danger">{money.format(Number(salarySummary.total_salary_spend || 0))}</div>
+              <div className="small text-muted">Across {salarySummary.adjustment_count || 0} salary entries</div>
+            </div>
+          </div>
+        </div>
+        <div className="col-md-4">
+          <div className="card shadow-sm h-100">
+            <div className="card-body">
+              <div className="text-muted small">Period start</div>
+              <input type="date" className="form-control" value={salaryStartDate} onChange={(e) => setSalaryStartDate(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <div className="col-md-4">
+          <div className="card shadow-sm h-100">
+            <div className="card-body">
+              <div className="text-muted small">Period end</div>
+              <input type="date" className="form-control" value={salaryEndDate} onChange={(e) => setSalaryEndDate(e.target.value)} />
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="row g-4">
         <div className="col-lg-4">
@@ -174,34 +216,11 @@ const EmployeeManager = () => {
                   >
                     <div className="fw-semibold">{employee.name}</div>
                     <div className="small opacity-75">{employee.email}</div>
+                    <div className="small opacity-75">Phone: {employee.phone || 'N/A'}</div>
                     <div className="small opacity-75">Role: {employee.employee_role || 'employee'}</div>
                   </button>
                 ))}
                 {employees.length === 0 && <div className="text-muted">No employees found</div>}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-lg-4">
-          <div className="card shadow-sm h-100">
-            <div className="card-body">
-              <h3 className="card-title">Available Users</h3>
-              <p className="text-muted small">Pick a user to promote into the employee registry, then save permissions.</p>
-              <div className="list-group" style={{ maxHeight: '640px', overflowY: 'auto' }}>
-                {availableUsers.map((user) => (
-                  <button
-                    type="button"
-                    key={user.id}
-                    className={`list-group-item list-group-item-action ${String(selectedEmployeeId) === String(user.id) ? 'active' : ''}`}
-                    onClick={() => setSelectedEmployeeId(user.id)}
-                  >
-                    <div className="fw-semibold">{user.name}</div>
-                    <div className="small opacity-75">{user.email}</div>
-                    <div className="small opacity-75">Role: {user.role || 'user'}</div>
-                  </button>
-                ))}
-                {availableUsers.length === 0 && <div className="text-muted">No available users to promote</div>}
               </div>
             </div>
           </div>
@@ -214,11 +233,7 @@ const EmployeeManager = () => {
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
                   <label className="form-label">Employee</label>
-                  <input className="form-control" value={selectedEmployee ? `${selectedEmployee.name} (${selectedEmployee.email})` : (selectedUser ? `${selectedUser.name} (${selectedUser.email})` : '')} readOnly placeholder="Select an employee or user" />
-                </div>
-                <div className="col-md-3">
-                  <label className="form-label">Base Salary</label>
-                  <input type="number" min="0" step="0.01" className="form-control" value={baseSalary} onChange={(event) => setBaseSalary(event.target.value)} />
+                  <input className="form-control" value={selectedEmployee ? `${selectedEmployee.name} (${selectedEmployee.phone || 'no phone'})` : ''} readOnly placeholder="Select an employee" />
                 </div>
               </div>
 
@@ -247,35 +262,6 @@ const EmployeeManager = () => {
             </div>
           </div>
 
-          <div className="card shadow-sm mb-4">
-            <div className="card-body">
-              <h3 className="card-title mb-3">Salary Management</h3>
-              <div className="row g-3 align-items-end">
-                <div className="col-md-3">
-                  <label className="form-label">Adjustment Type</label>
-                  <select className="form-select" value={salaryType} onChange={(event) => setSalaryType(event.target.value)}>
-                    <option value="overtime">Overtime</option>
-                    <option value="deduction">Deduction</option>
-                    <option value="bonus">Bonus</option>
-                    <option value="unavailability">Unavailability</option>
-                  </select>
-                </div>
-                <div className="col-md-3">
-                  <label className="form-label">Amount</label>
-                  <input type="number" step="0.01" className="form-control" value={salaryDelta} onChange={(event) => setSalaryDelta(event.target.value)} placeholder="Use positive or negative value" />
-                </div>
-                <div className="col-md-4">
-                  <label className="form-label">Reason</label>
-                  <input type="text" className="form-control" value={salaryReason} onChange={(event) => setSalaryReason(event.target.value)} placeholder="Overtime hours, absence, bonus reason" />
-                </div>
-                <div className="col-md-2">
-                  <button className="btn btn-success w-100" onClick={handleSalaryAdjust}>Apply</button>
-                </div>
-              </div>
-              <div className="text-muted small mt-2">Positive values increase salary. Negative values subtract salary.</div>
-            </div>
-          </div>
-
           <div className="card shadow-sm">
             <div className="card-body">
               <h3 className="card-title mb-3">Salary History</h3>
@@ -291,7 +277,7 @@ const EmployeeManager = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {salaryHistory.map((item) => (
+                    {selectedHistory.map((item) => (
                       <tr key={item.salary_adjustment_id}>
                         <td>{item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}</td>
                         <td>{Number(item.amount || 0).toFixed(2)}</td>
@@ -300,7 +286,7 @@ const EmployeeManager = () => {
                         <td>{item.created_by_name || item.created_by_user_id || 'N/A'}</td>
                       </tr>
                     ))}
-                    {salaryHistory.length === 0 && (
+                    {selectedHistory.length === 0 && (
                       <tr>
                         <td colSpan="5" className="text-center text-muted py-4">No salary changes recorded</td>
                       </tr>

@@ -1,8 +1,14 @@
 body {
-	background: #f4f7fb;
+	background: #fff8e7;
+	color: #2b1d0e;
+	font-family: "Trebuchet MS", "Segoe UI", sans-serif;
 }
 
 a {
 	text-decoration: none;
+}
+
+.btn {
+	border-radius: 0.85rem;
 }
 
