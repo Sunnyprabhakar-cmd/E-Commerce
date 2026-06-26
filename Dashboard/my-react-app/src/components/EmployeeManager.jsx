@@ -44,9 +44,13 @@ const EmployeeManager = ({ mode = 'records' }) => {
   const [message, setMessage] = useState('');
 
   const selectedEmployee = useMemo(
-    () => employees.find((employee) => String(employee.id) === String(selectedEmployeeId)) || null,
-    [employees, selectedEmployeeId]
-  );
+  () =>
+    employees.find(
+      (employee) =>
+        String(employee.employee_id) === String(selectedEmployeeId)
+    ) || null,
+  [employees, selectedEmployeeId]
+);
 
   const fetchEmployees = async () => {
     try {
