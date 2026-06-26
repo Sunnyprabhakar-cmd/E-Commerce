@@ -25,53 +25,6 @@ export const ensureAdminPortalSchema = async () => {
         return;
     }
 
-    await db.query(`
-        CREATE TABLE IF NOT EXISTS stock_entries (
-            stock_entry_id SERIAL PRIMARY KEY,
-            product_id TEXT NOT NULL,
-            product_name TEXT NOT NULL,
-            units INTEGER NOT NULL CHECK (units > 0),
-            notes TEXT,
-            recorded_by_user_id TEXT,
-            recorded_by_name TEXT,
-            recorded_at TIMESTAMP DEFAULT NOW()
-        )
-    `);
-
-    await db.query(`
-        CREATE TABLE IF NOT EXISTS employee_profiles (
-            employee_id TEXT PRIMARY KEY,
-            employee_name TEXT NOT NULL,
-            phone TEXT,
-            aadhar_card TEXT,
-            salary NUMERIC(12,2) NOT NULL DEFAULT 0,
-            notes TEXT,
-            created_by_user_id TEXT,
-            created_by_name TEXT,
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-        )
-    `);
-
-    await db.query(`
-        CREATE TABLE IF NOT EXISTS employee_permissions (
-            employee_id TEXT PRIMARY KEY,
-            employee_name TEXT,
-            employee_email TEXT,
-            role TEXT NOT NULL DEFAULT 'employee',
-            can_create_product BOOLEAN NOT NULL DEFAULT FALSE,
-            can_delete_product BOOLEAN NOT NULL DEFAULT FALSE,
-            can_update_product BOOLEAN NOT NULL DEFAULT FALSE,
-            can_apply_discount BOOLEAN NOT NULL DEFAULT FALSE,
-            can_manage_stock BOOLEAN NOT NULL DEFAULT FALSE,
-            can_manage_employees BOOLEAN NOT NULL DEFAULT FALSE,
-            can_manage_salary BOOLEAN NOT NULL DEFAULT FALSE,
-            base_salary NUMERIC(12,2) NOT NULL DEFAULT 0,
-            salary_adjustment NUMERIC(12,2) NOT NULL DEFAULT 0,
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-        )
     `);
 
         await db.query(`
