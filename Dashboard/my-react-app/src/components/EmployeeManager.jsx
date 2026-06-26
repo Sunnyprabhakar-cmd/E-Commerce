@@ -106,8 +106,8 @@ const EmployeeManager = ({ mode = 'records' }) => {
     }
 
     setEmployeeForm({
-      employee_id: selectedEmployee.id || '',
-      employee_name: selectedEmployee.name || '',
+       employee_id: selectedEmployee.employee_id || '',
+       employee_name: selectedEmployee.employee_name || '',
       phone: selectedEmployee.phone || '',
       aadhar_card: selectedEmployee.aadhar_card || '',
       salary: selectedEmployee.salary ?? '',
@@ -125,7 +125,7 @@ const EmployeeManager = ({ mode = 'records' }) => {
     });
 
     if (mode === 'salary') {
-      fetchSalaryHistory(selectedEmployee.id);
+      fetchSalaryHistory(selectedEmployee.employee_id);
     }
   }, [mode, selectedEmployee]);
 
@@ -217,8 +217,8 @@ const EmployeeManager = ({ mode = 'records' }) => {
             <button
               type="button"
               key={employee.employee_id}
-              className={`list-group-item list-group-item-action ${String(selectedEmployeeId) === String(employee.id) ? 'active' : ''}`}
-              onClick={() => setSelectedEmployeeId(String(employee.employee_id))}
+              className={`list-group-item list-group-item-action ${String(selectedEmployeeId) === String(employee.employee_id) ? 'active' : ''}`}
+              onClick={() => setSelectedEmployeeId(String(employee.employee_id))}>
               <div className="d-flex justify-content-between align-items-center gap-2">
                 <div>
                   <div className="fw-semibold">{employee.employee_name}</div>
@@ -327,7 +327,7 @@ const EmployeeManager = ({ mode = 'records' }) => {
             <h3 className="card-title mb-3">Permissions</h3>
             <div className="mb-3">
               <label className="form-label">Selected Employee</label>
-              <input className="form-control" value={selectedEmployee ? `${selectedEmployee.name} (${selectedEmployee.id})` : ''} readOnly placeholder="Choose an employee" />
+              <input className="form-control" value={selectedEmployee ? `${selectedEmployee.employee_name} (${selectedEmployee.employee_id})` : ''} readOnly placeholder="Choose an employee" />
             </div>
             <div className="row g-2">
               {[
