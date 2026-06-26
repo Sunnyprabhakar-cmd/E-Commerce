@@ -74,6 +74,42 @@ export const ensureAdminPortalSchema = async () => {
         )
     `);
 
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS employee_accounts (
+                employee_id TEXT PRIMARY KEY,
+                user_id TEXT,
+                login_email TEXT UNIQUE,
+                invite_token TEXT UNIQUE,
+                invite_expires_at TIMESTAMP,
+                activated_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS employee_invites (
+                invite_token TEXT PRIMARY KEY,
+                employee_id TEXT NOT NULL,
+                created_by_user_id TEXT,
+                created_by_name TEXT,
+                invite_expires_at TIMESTAMP NOT NULL,
+                used_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await db.query(`
+            CREATE TABLE IF NOT EXISTS refresh_tokens (
+                refresh_token_id SERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                revoked_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
     await db.query(`
         CREATE TABLE IF NOT EXISTS salary_adjustments (
             salary_adjustment_id SERIAL PRIMARY KEY,
@@ -149,6 +185,181 @@ export const getAdminSummary = async ({ startDate = null, endDate = null } = {})
          ${whereClause}`,
         params
     );
+
+        await db.query(
+            `INSERT INTO employee_permissions(employee_id, employee_name, role, updated_at)
+             VALUES ($1,$2,'employee',NOW())
+             ON CONFLICT (employee_id) DO UPDATE SET employee_name = EXCLUDED.employee_name, updated_at = NOW()`,
+            [String(employee_id), employee_name]
+        );
+
+        await db.query(
+            `INSERT INTO employee_accounts(employee_id, invite_token, invite_expires_at, updated_at)
+             VALUES ($1,$2,$3,NOW())
+             ON CONFLICT (employee_id) DO UPDATE SET invite_token = EXCLUDED.invite_token, invite_expires_at = EXCLUDED.invite_expires_at, updated_at = NOW()`,
+            [String(employee_id), inviteToken, expiresAt]
+        );
+
+        return {
+            ok: true,
+            invite: {
+                invite_token: inviteToken,
+                employee_id: String(employee_id),
+                employee_name: employee.rows[0].employee_name,
+                phone: employee.rows[0].phone || null,
+                invite_expires_at: expiresAt,
+            },
+        };
+    };
+
+    export const generateEmployeeInvite = async ({ employee_id, created_by_user_id, created_by_name, daysValid = 7 }) => {
+        await ensureAdminPortalSchema();
+        if (!employee_id) {
+            return { ok: false, message: 'Employee id is required' };
+        }
+
+        const employee = await db.query(
+            'SELECT employee_id, employee_name, phone FROM employee_profiles WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1',
+            [employee_id]
+        );
+        if (!employee.rows?.[0]) {
+            return { ok: false, message: 'Employee not found' };
+        }
+
+        const inviteToken = crypto.randomUUID();
+        const expiresAt = new Date(Date.now() + Number(daysValid || 7) * 24 * 60 * 60 * 1000);
+
+        await db.query(
+            `INSERT INTO employee_invites(invite_token, employee_id, created_by_user_id, created_by_name, invite_expires_at)
+             VALUES ($1,$2,$3,$4,$5)
+             ON CONFLICT (invite_token) DO UPDATE SET invite_expires_at = EXCLUDED.invite_expires_at`,
+            [inviteToken, String(employee_id), created_by_user_id || null, created_by_name || null, expiresAt]
+        );
+
+        return {
+            ok: true,
+            invite: {
+                invite_token: inviteToken,
+                employee_id: String(employee_id),
+                employee_name: employee.rows[0].employee_name,
+                phone: employee.rows[0].phone || null,
+                invite_expires_at: expiresAt,
+            },
+        };
+    };
+
+    export const activateEmployeeInvite = async ({ invite_token, name, email, phone, password }) => {
+        await ensureAdminPortalSchema();
+        if (!invite_token || !email || !password) {
+            return { ok: false, message: 'Invite token, email and password are required' };
+        }
+
+        const inviteResult = await db.query(
+            `SELECT invite_token, employee_id, invite_expires_at, used_at
+             FROM employee_invites
+             WHERE invite_token = $1
+             LIMIT 1`,
+            [invite_token]
+        );
+        const invite = inviteResult.rows?.[0];
+        if (!invite) {
+            return { ok: false, message: 'Invalid invite link' };
+        }
+        if (invite.used_at) {
+            return { ok: false, message: 'Invite link already used' };
+        }
+        if (new Date(invite.invite_expires_at).getTime() < Date.now()) {
+            return { ok: false, message: 'Invite link expired' };
+        }
+
+        const employee = await db.query(
+            'SELECT employee_id, employee_name, phone FROM employee_profiles WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1',
+            [invite.employee_id]
+        );
+        const employeeRecord = employee.rows?.[0];
+        if (!employeeRecord) {
+            return { ok: false, message: 'Employee not found' };
+        }
+
+        const existingEmail = await db.query('SELECT id FROM users WHERE email=$1 LIMIT 1', [email]);
+        if (existingEmail.rows?.[0]) {
+            return { ok: false, message: 'Email already registered' };
+        }
+
+            const passwordHash = await hashPassword(password);
+        const userInsert = await db.query(
+            `INSERT INTO users(name, password, email, phone, role)
+                 VALUES ($1,$2,$3,$4,'employee')
+             RETURNING id, name, email, phone, role`,
+            [name || employeeRecord.employee_name, passwordHash, email, phone || employeeRecord.phone || null]
+        );
+        const user = userInsert.rows?.[0];
+
+        await db.query(
+            `INSERT INTO employee_accounts(employee_id, user_id, login_email, invite_token, invite_expires_at, activated_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
+             ON CONFLICT (employee_id) DO UPDATE SET user_id = EXCLUDED.user_id, login_email = EXCLUDED.login_email, invite_token = EXCLUDED.invite_token, invite_expires_at = EXCLUDED.invite_expires_at, activated_at = NOW(), updated_at = NOW()`,
+            [String(invite.employee_id), String(user.id), email, invite_token, invite.invite_expires_at]
+        );
+
+        await db.query('UPDATE employee_invites SET used_at = NOW() WHERE invite_token = $1', [invite_token]);
+
+        await db.query(
+            `INSERT INTO employee_permissions(employee_id, employee_name, employee_email, role, updated_at)
+             VALUES ($1,$2,$3,'employee',NOW())
+             ON CONFLICT (employee_id) DO UPDATE SET employee_name = EXCLUDED.employee_name, employee_email = EXCLUDED.employee_email, updated_at = NOW()`,
+            [String(invite.employee_id), name || employeeRecord.employee_name, email]
+        );
+
+        return { ok: true, user, employee_id: String(invite.employee_id) };
+    };
+
+    export const linkEmployeeAccount = async (userId) => {
+        await ensureAdminPortalSchema();
+        const result = await db.query(
+            `SELECT employee_id FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
+            [String(userId)]
+        );
+        return result.rows?.[0]?.employee_id || null;
+    };
+
+    export const loadEmployeeAccountByUserId = async (userId) => {
+        await ensureAdminPortalSchema();
+        const result = await db.query(
+            `SELECT employee_id, login_email, invite_token, activated_at FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
+            [String(userId)]
+        );
+        return result.rows?.[0] || null;
+    };
+
+    export const saveRefreshToken = async ({ user_id, token_hash, expires_at }) => {
+        await ensureAdminPortalSchema();
+        await db.query(
+            `INSERT INTO refresh_tokens(user_id, token_hash, expires_at)
+             VALUES ($1,$2,$3)`,
+            [String(user_id), token_hash, expires_at]
+        );
+    };
+
+    export const findRefreshToken = async (token_hash) => {
+        await ensureAdminPortalSchema();
+        const result = await db.query(
+            `SELECT refresh_token_id, user_id, token_hash, expires_at, revoked_at
+             FROM refresh_tokens
+             WHERE token_hash = $1
+             LIMIT 1`,
+            [token_hash]
+        );
+        return result.rows?.[0] || null;
+    };
+
+    export const revokeRefreshToken = async (token_hash) => {
+        await ensureAdminPortalSchema();
+        await db.query(
+            `UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1`,
+            [token_hash]
+        );
+    };
 
     return result.rows?.[0] || {
         total_amount: 0,
@@ -343,12 +554,16 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
         "SELECT employee_id, employee_name, employee_email, role FROM employee_permissions WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
         [employeeId]
     );
+    const employeeProfile = await db.query(
+        "SELECT employee_id, employee_name, phone FROM employee_profiles WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
+        [employeeId]
+    );
 
-    if (existingUser.rows.length === 0 && existingEmployee.rows.length === 0 && !payload.employee_name && !payload.employee_email) {
+    if (existingUser.rows.length === 0 && existingEmployee.rows.length === 0 && employeeProfile.rows.length === 0 && !payload.employee_name && !payload.employee_email) {
         return { ok: false, message: "Employee not found" };
     }
 
-    const current = existingEmployee.rows[0] || existingUser.rows[0] || {};
+    const current = existingEmployee.rows[0] || existingUser.rows[0] || employeeProfile.rows[0] || {};
     const employeeName = payload.employee_name || current.name || current.employee_name || 'Employee';
     const employeeEmail = payload.employee_email || current.email || current.employee_email || null;
     const employeeRole = payload.role || current.role || 'employee';
@@ -404,6 +619,15 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
             payload.notes || null,
         ]
     );
+
+    if (employeeProfile.rows.length > 0) {
+        await db.query(
+            `UPDATE employee_profiles
+             SET employee_name = $2, updated_at = NOW()
+             WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT)`,
+            [String(employeeId), employeeName]
+        );
+    }
 
     return { ok: true, employee: saved.rows?.[0] || null };
 };

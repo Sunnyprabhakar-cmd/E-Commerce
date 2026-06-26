@@ -94,7 +94,7 @@ const AdminOverview = ({ onNavigate }) => {
         <div className="d-flex gap-2 flex-wrap">
           <button className="btn btn-outline-primary" onClick={() => fetchSummary(appliedRange)}>Refresh</button>
           {onNavigate && <button className="btn btn-primary" onClick={() => onNavigate('stock')}>Open Stock</button>}
-          {onNavigate && <button className="btn btn-outline-dark" onClick={() => onNavigate('employees')}>Open Employees</button>}
+          {onNavigate && <button className="btn btn-outline-dark" onClick={() => onNavigate('employee-records')}>Open Employees</button>}
         </div>
       </div>
 

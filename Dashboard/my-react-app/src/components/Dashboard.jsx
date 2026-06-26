@@ -44,6 +44,7 @@ const Dashboard = () => {
 
   const handleLogin = () => {
     const token = localStorage.getItem('token');
+    const refreshToken = localStorage.getItem('refreshToken');
     setIsLoggedIn(true);
     const nextSession = decodeToken(token);
     setSession(nextSession);
@@ -54,6 +55,7 @@ const Dashboard = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('currentView');
     setIsLoggedIn(false);
     setSession(null);

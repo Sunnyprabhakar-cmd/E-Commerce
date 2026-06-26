@@ -30,6 +30,9 @@ const Auth = ({ onLogin }) => {
 
       if (isLogin && response.data.token) {
         localStorage.setItem('token', response.data.token);
+        if (response.data.refreshToken) {
+          localStorage.setItem('refreshToken', response.data.refreshToken);
+        }
         onLogin();
       } else if (!isLogin) {
         setIsLogin(true);

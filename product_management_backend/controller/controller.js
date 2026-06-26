@@ -25,11 +25,18 @@ import {
     listEmployees,
     getEmployeeProfiles,
     saveEmployeeProfile,
+    generateEmployeeInvite,
+    activateEmployeeInvite,
     getSalarySummary,
     saveEmployeePermissions,
     adjustEmployeeSalary,
     getSalaryHistory,
+    findRefreshToken,
+    revokeRefreshToken,
+    saveRefreshToken,
 } from "../services/admin_portal.js";
+import { createAccessToken, createRefreshToken, hashRefreshToken, persistRefreshToken } from "../login&registration/login.js";
+import jwt from 'jsonwebtoken';
 //Creating Product
 export const createProduct=(req,res)=>{
     try{
@@ -550,6 +557,92 @@ export const employeeProfileUpsert = async (req, res) => {
         return res.status(200).json({ message: 'employee profile saved', employee: result.employee });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeInviteCreate = async (req, res) => {
+    try {
+        const result = await generateEmployeeInvite({
+            employee_id: req.params.id || req.body.employee_id,
+            created_by_user_id: req.user.id || req.user.email,
+            created_by_name: req.user.name || req.user.username || null,
+            daysValid: req.body.daysValid || 7,
+        });
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        const baseUrl = process.env.PUBLIC_APP_URL || 'http://localhost:5173';
+        return res.status(200).json({
+            message: 'invite created',
+            invite: result.invite,
+            invite_link: `${baseUrl}/employee-invite/${result.invite.invite_token}`,
+        });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeInviteActivate = async (req, res) => {
+    try {
+        const result = await activateEmployeeInvite({
+            invite_token: req.params.token,
+            name: req.body.name,
+            email: req.body.email,
+            phone: req.body.phone,
+            password: req.body.password,
+        });
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        const accessToken = createAccessToken({
+            id: result.user.id,
+            name: result.user.name,
+            email: result.user.email,
+            role: result.user.role,
+            employee_id: result.employee_id,
+        });
+        const refreshToken = createRefreshToken({
+            id: result.user.id,
+            role: result.user.role,
+            employee_id: result.employee_id,
+        });
+        await persistRefreshToken(result.user.id, refreshToken);
+        return res.status(200).json({
+            message: 'employee account created',
+            ...result,
+            token: accessToken,
+            refreshToken,
+        });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const refreshAuthToken = async (req, res) => {
+    try {
+        const refreshToken = req.body.refreshToken || req.headers['x-refresh-token'];
+        if (!refreshToken) {
+            return res.status(401).json({ message: 'Refresh token missing' });
+        }
+
+        const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET || process.env.SECRET || 'secretkey');
+        const existing = await findRefreshToken(hashRefreshToken(refreshToken));
+        if (!existing || existing.revoked_at || new Date(existing.expires_at).getTime() < Date.now()) {
+            return res.status(401).json({ message: 'Refresh token expired' });
+        }
+
+        const employeeId = decoded?.employee_id || null;
+        const newAccessToken = createAccessToken({
+            id: decoded.id,
+            role: decoded.role,
+            employee_id: employeeId,
+        });
+        return res.status(200).json({
+            message: 'token refreshed',
+            token: newAccessToken,
+        });
+    } catch (err) {
+        return res.status(401).json({ message: 'Refresh token expired', error: err.message });
     }
 };
 

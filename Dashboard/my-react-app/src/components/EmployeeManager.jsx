@@ -41,6 +41,7 @@ const EmployeeManager = ({ mode = 'records' }) => {
   const [salaryStartDate, setSalaryStartDate] = useState('');
   const [salaryEndDate, setSalaryEndDate] = useState('');
   const [salaryEntry, setSalaryEntry] = useState(emptySalaryEntry);
+  const [inviteLink, setInviteLink] = useState('');
   const [message, setMessage] = useState('');
 
   const selectedEmployee = useMemo(
@@ -208,6 +209,21 @@ const EmployeeManager = ({ mode = 'records' }) => {
     }
   };
 
+  const handleGenerateInvite = async () => {
+    if (!selectedEmployeeId) {
+      setMessage('Select an employee first');
+      return;
+    }
+
+    try {
+      const response = await api.post(`/admin/employees/${selectedEmployeeId}/invite`, {});
+      setInviteLink(response.data?.invite_link || '');
+      setMessage('Employee invite link generated');
+    } catch (error) {
+      setMessage(error.response?.data?.message || 'Failed to generate invite link');
+    }
+  };
+
   const renderEmployeeList = () => (
     <div className="card shadow-sm h-100">
       <div className="card-body">
@@ -271,8 +287,14 @@ const EmployeeManager = ({ mode = 'records' }) => {
               </div>
             </div>
             <div className="d-flex justify-content-end mt-3">
+              <button className="btn btn-outline-primary me-2" onClick={handleGenerateInvite}>Generate Invite</button>
               <button className="btn btn-primary" onClick={handleEmployeeSave}>Save Employee</button>
             </div>
+            {inviteLink && (
+              <div className="alert alert-success mt-3 mb-0">
+                Invite link: <a href={inviteLink} target="_blank" rel="noreferrer">{inviteLink}</a>
+              </div>
+            )}
           </div>
         </div>
 

@@ -26,6 +26,18 @@ const loadEmployeePermissions = async (userId) => {
     }
 };
 
+const loadEmployeeIdForUser = async (userId) => {
+    try {
+        const result = await db.query(
+            `SELECT employee_id FROM employee_accounts WHERE CAST(user_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1`,
+            [userId]
+        );
+        return result.rows?.[0]?.employee_id || null;
+    } catch {
+        return null;
+    }
+};
+
 async function auth(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
@@ -39,10 +51,12 @@ async function auth(req, res, next) {
 
     try {
         const decoded = jwt.verify(token, process.env.SECRET || "secretkey");
-        if (decoded?.id) {
-            const permissions = await loadEmployeePermissions(decoded.id);
+        const employeeId = decoded?.employee_id || (decoded?.id ? await loadEmployeeIdForUser(decoded.id) : null);
+        if (employeeId) {
+            const permissions = await loadEmployeePermissions(employeeId);
             if (permissions) {
                 decoded.permissions = permissions;
+                decoded.employee_id = employeeId;
             }
         }
         req.user = decoded;
