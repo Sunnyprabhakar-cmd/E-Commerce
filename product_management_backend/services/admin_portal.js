@@ -349,53 +349,6 @@ export const activateCustomerInvite = async ({ invite_token, name, email, phone,
     return { ok: true, user: userInsert.rows?.[0] || null };
 };
 
-export const linkEmployeeAccount = async (userId) => {
-    await ensureAdminPortalSchema();
-    const result = await db.query(
-        `SELECT employee_id FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
-        [String(userId)]
-    );
-    return result.rows?.[0]?.employee_id || null;
-};
-
-export const loadEmployeeAccountByUserId = async (userId) => {
-    await ensureAdminPortalSchema();
-    const result = await db.query(
-        `SELECT employee_id, login_email, invite_token, activated_at FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
-        [String(userId)]
-    );
-    return result.rows?.[0] || null;
-};
-
-export const saveRefreshToken = async ({ user_id, token_hash, expires_at }) => {
-    await ensureAdminPortalSchema();
-    await db.query(
-        `INSERT INTO refresh_tokens(user_id, token_hash, expires_at)
-         VALUES ($1,$2,$3)`,
-        [String(user_id), token_hash, expires_at]
-    );
-};
-
-export const findRefreshToken = async (token_hash) => {
-    await ensureAdminPortalSchema();
-    const result = await db.query(
-        `SELECT refresh_token_id, user_id, token_hash, expires_at, revoked_at
-         FROM refresh_tokens
-         WHERE token_hash = $1
-         LIMIT 1`,
-        [token_hash]
-    );
-    return result.rows?.[0] || null;
-};
-
-export const revokeRefreshToken = async (token_hash) => {
-    await ensureAdminPortalSchema();
-    await db.query(
-        `UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1`,
-        [token_hash]
-    );
-};
-
 export const getRecentProducts = async (limit = 10) => {
     await ensureAdminPortalSchema();
     const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
