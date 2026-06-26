@@ -69,7 +69,7 @@ const EmployeeManager = ({ mode = 'records' }) => {
       setSalarySummary(summaryResponse.data?.summary || { total_salary_spend: 0, adjustment_count: 0 });
 
       if (!selectedEmployeeId && loadedEmployees.length > 0) {
-        setSelectedEmployeeId(String(loadedEmployees[0].id));
+        setSelectedEmployeeId(String(loadedEmployees[0].employee_id));
       }
     } catch (error) {
       setMessage(error.response?.data?.message || 'Failed to load employees');
@@ -216,14 +216,13 @@ const EmployeeManager = ({ mode = 'records' }) => {
           {employees.map((employee) => (
             <button
               type="button"
-              key={employee.id}
+              key={employee.employee_id}
               className={`list-group-item list-group-item-action ${String(selectedEmployeeId) === String(employee.id) ? 'active' : ''}`}
-              onClick={() => setSelectedEmployeeId(String(employee.id))}
-            >
+              onClick={() => setSelectedEmployeeId(String(employee.employee_id))}
               <div className="d-flex justify-content-between align-items-center gap-2">
                 <div>
-                  <div className="fw-semibold">{employee.name}</div>
-                  <div className="small opacity-75">ID: {employee.id}</div>
+                  <div className="fw-semibold">{employee.employee_name}</div>
+                  <div className="small opacity-75">ID: {employee.employee_id}</div>
                   <div className="small opacity-75">Phone: {employee.phone || 'N/A'}</div>
                 </div>
                 <div className="text-end small opacity-75">
@@ -293,9 +292,9 @@ const EmployeeManager = ({ mode = 'records' }) => {
                 </thead>
                 <tbody>
                   {employees.map((employee) => (
-                    <tr key={employee.id} onClick={() => setSelectedEmployeeId(String(employee.id))} style={{ cursor: 'pointer' }}>
-                      <td>{employee.id}</td>
-                      <td>{employee.name}</td>
+                    <tr key={employee.employee_id} onClick={() => setSelectedEmployeeId(String(employee.employee_id))} style={{ cursor: 'pointer' }}>
+                      <td>{employee.employee_id}</td>
+                      <td>{employee.employee_name}</td>
                       <td>{employee.phone || 'N/A'}</td>
                       <td>{employee.aadhar_card || 'N/A'}</td>
                       <td>{money.format(Number(employee.salary || 0))}</td>
