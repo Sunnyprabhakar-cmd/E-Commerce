@@ -3,6 +3,23 @@ import { fetchProductById } from "../product_model/model.js";
 
 let isAdminPortalSchemaReady = false;
 
+const buildDateFilter = (startDate, endDate, columnName = 'created_at') => {
+    const clauses = [];
+    const params = [];
+
+    if (startDate) {
+        params.push(startDate);
+        clauses.push(`${columnName}::date >= $${params.length}::date`);
+    }
+
+    if (endDate) {
+        params.push(endDate);
+        clauses.push(`${columnName}::date <= $${params.length}::date`);
+    }
+
+    return { clauses, params };
+};
+
 export const ensureAdminPortalSchema = async () => {
     if (isAdminPortalSchemaReady) {
         return;
@@ -74,17 +91,21 @@ export const ensureAdminPortalSchema = async () => {
     isAdminPortalSchemaReady = true;
 };
 
-export const getAdminSummary = async () => {
+export const getAdminSummary = async ({ startDate = null, endDate = null } = {}) => {
     await ensureAdminPortalSchema();
-    const result = await db.query(`
-        SELECT
+    const { clauses, params } = buildDateFilter(startDate, endDate, 'created_at');
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const result = await db.query(
+        `SELECT
             COALESCE(SUM(total_cost), 0) AS total_amount,
             COALESCE(SUM(amount_paid), 0) AS total_paid_amount,
             COALESCE(SUM(payable_amount), 0) AS total_generated_after_discount,
             COALESCE(SUM(discount_amount), 0) AS total_discount_amount,
             COUNT(*) AS order_count
-        FROM orders
-    `);
+         FROM orders
+         ${whereClause}`,
+        params
+    );
 
     return result.rows?.[0] || {
         total_amount: 0,
@@ -93,6 +114,40 @@ export const getAdminSummary = async () => {
         total_discount_amount: 0,
         order_count: 0,
     };
+};
+
+export const getRecentProducts = async (limit = 10) => {
+    await ensureAdminPortalSchema();
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
+    const result = await db.query(
+        `SELECT id, name, price, category, piece, availability, created_at
+         FROM products
+         ORDER BY created_at DESC, id DESC
+         LIMIT $1`,
+        [safeLimit]
+    );
+    return result.rows || [];
+};
+
+export const getRecentStockEntries = async (limit = 10) => {
+    await ensureAdminPortalSchema();
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
+    const result = await db.query(
+        `SELECT
+            s.stock_entry_id,
+            s.product_id,
+            s.product_name,
+            s.units,
+            s.notes,
+            s.recorded_by_user_id,
+            s.recorded_by_name,
+            s.recorded_at
+         FROM stock_entries s
+         ORDER BY s.recorded_at DESC, s.stock_entry_id DESC
+         LIMIT $1`,
+        [safeLimit]
+    );
+    return result.rows || [];
 };
 
 export const getStockEntries = async () => {
@@ -140,12 +195,12 @@ export const listEmployees = async () => {
     await ensureAdminPortalSchema();
     const result = await db.query(`
         SELECT
-            u.id,
-            u.name,
-            u.email,
+            ep.employee_id AS id,
+            COALESCE(ep.employee_name, u.name, 'Employee') AS name,
+            COALESCE(ep.employee_email, u.email, '') AS email,
             u.phone,
             u.role AS user_role,
-            COALESCE(ep.role, u.role, 'employee') AS employee_role,
+            COALESCE(ep.role, 'employee') AS employee_role,
             COALESCE(ep.can_create_product, FALSE) AS can_create_product,
             COALESCE(ep.can_delete_product, FALSE) AS can_delete_product,
             COALESCE(ep.can_update_product, FALSE) AS can_update_product,
@@ -157,11 +212,21 @@ export const listEmployees = async () => {
             COALESCE(ep.salary_adjustment, 0) AS salary_adjustment,
             ep.notes,
             ep.updated_at
-        FROM users u
-        LEFT JOIN employee_permissions ep ON CAST(ep.employee_id AS TEXT) = CAST(u.id AS TEXT)
-        ORDER BY u.name ASC, u.id ASC
+        FROM employee_permissions ep
+        LEFT JOIN users u ON CAST(u.id AS TEXT) = CAST(ep.employee_id AS TEXT)
+        ORDER BY COALESCE(ep.employee_name, u.name, 'Employee') ASC, CAST(ep.employee_id AS TEXT) ASC
     `);
 
+    return result.rows || [];
+};
+
+export const listUsers = async () => {
+    await ensureAdminPortalSchema();
+    const result = await db.query(`
+        SELECT id, name, email, phone, role
+        FROM users
+        ORDER BY name ASC, id ASC
+    `);
     return result.rows || [];
 };
 
@@ -171,15 +236,23 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
         return { ok: false, message: "Employee id is required" };
     }
 
-    const employee = await db.query(
+    const existingUser = await db.query(
         "SELECT id, name, email, role FROM users WHERE CAST(id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
         [employeeId]
     );
-    if (employee.rows.length === 0) {
+    const existingEmployee = await db.query(
+        "SELECT employee_id, employee_name, employee_email, role FROM employee_permissions WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
+        [employeeId]
+    );
+
+    if (existingUser.rows.length === 0 && existingEmployee.rows.length === 0 && !payload.employee_name && !payload.employee_email) {
         return { ok: false, message: "Employee not found" };
     }
 
-    const current = employee.rows[0];
+    const current = existingEmployee.rows[0] || existingUser.rows[0] || {};
+    const employeeName = payload.employee_name || current.name || current.employee_name || 'Employee';
+    const employeeEmail = payload.employee_email || current.email || current.employee_email || null;
+    const employeeRole = payload.role || current.role || 'employee';
     const permissions = {
         can_create_product: Boolean(payload.can_create_product),
         can_delete_product: Boolean(payload.can_delete_product),
@@ -217,9 +290,9 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
         RETURNING *`,
         [
             String(employeeId),
-            current.name,
-            current.email,
-            payload.role || current.role || 'employee',
+            employeeName,
+            employeeEmail,
+            employeeRole,
             permissions.can_create_product,
             permissions.can_delete_product,
             permissions.can_update_product,
@@ -251,8 +324,16 @@ export const adjustEmployeeSalary = async (employeeId, amount, reason, adjustmen
         "SELECT id, name FROM users WHERE CAST(id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
         [employeeId]
     );
-    if (employee.rows.length === 0) {
-        return { ok: false, message: "Employee not found" };
+    const employeeRecord = employee.rows[0] || null;
+    if (!employeeRecord) {
+        const fallbackEmployee = await db.query(
+            "SELECT employee_id, employee_name FROM employee_permissions WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
+            [employeeId]
+        );
+        if (fallbackEmployee.rows.length === 0) {
+            return { ok: false, message: "Employee not found" };
+        }
+        employee.rows = [{ id: fallbackEmployee.rows[0].employee_id, name: fallbackEmployee.rows[0].employee_name || 'Employee' }];
     }
 
     const current = await db.query(

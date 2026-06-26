@@ -280,6 +280,17 @@ const Orders = ({ onNavigate, userRole }) => {
     invoiceWindow.focus();
   };
 
+  const handleOpenGroupDetails = (group) => {
+    const detailWindow = window.open('', '_blank');
+    if (!detailWindow) {
+      setMessage('Unable to open order details window. Check popup settings.');
+      return;
+    }
+    detailWindow.document.write(createGroupInvoiceHtml(group));
+    detailWindow.document.close();
+    detailWindow.focus();
+  };
+
   const handleCancelGroup = async (group) => {
     try {
       await api.post('/cancelOrder', {
@@ -639,7 +650,10 @@ const Orders = ({ onNavigate, userRole }) => {
                       <td>
                         <button
                           className="btn btn-sm btn-outline-primary"
-                          onClick={() => toggleGroupExpansion(group.groupId)}
+                          onClick={() => {
+                            toggleGroupExpansion(group.groupId);
+                            handleOpenGroupDetails(group);
+                          }}
                         >
                           {expandedGroups[group.groupId] ? 'Hide items' : 'Show items'}
                         </button>

@@ -57,7 +57,7 @@ const StockManager = () => {
 
     try {
       await api.post('/admin/stock', {
-        product_id: selectedProductId,
+        product_id: String(selectedProductId),
         units: value,
         notes,
       });
@@ -99,7 +99,7 @@ const StockManager = () => {
                         <div className="fw-semibold">{product.name}</div>
                         <div className="small opacity-75">ID: {product.id} · {product.category}</div>
                       </div>
-                      <span className="badge bg-light text-dark">{product.piece} in stock</span>
+                      <span className="badge bg-light text-dark">{Number(product.piece || 0)} in stock</span>
                     </div>
                   </button>
                 ))}

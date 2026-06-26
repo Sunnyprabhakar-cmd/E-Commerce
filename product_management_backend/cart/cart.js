@@ -7,7 +7,7 @@ const ensureCartSchema = async () => {
         return;
     }
     // product IDs in this app are UUID strings; ensure DB column can store them.
-    await db.query("ALTER TABLE cart_items ALTER COLUMN product_id TYPE INTEGER USING product_id::INTEGER");
+    await db.query("ALTER TABLE cart_items ALTER COLUMN product_id TYPE TEXT USING product_id::text");
     isCartSchemaReady = true;
 };
 
@@ -26,7 +26,7 @@ export const add_to_cart=async(user_id,product_id,quantity)=>{
         const qty = Number(quantity) || 1;
         const pid = String(product_id);
         const existingProduct = await db.query(
-            "SELECT id,name,price,category FROM products WHERE id=$1 LIMIT 1",
+            "SELECT id,name,price,category FROM products WHERE CAST(id AS TEXT) = CAST($1 AS TEXT) LIMIT 1",
             [pid]
         );
         if (existingProduct.rows.length === 0) {
@@ -57,7 +57,7 @@ export const cart_info=async(user_id)=>{
                     p.price,
                     p.category
              FROM cart_items c
-             LEFT JOIN products p ON p.id = c.product_id
+             LEFT JOIN products p ON CAST(p.id AS TEXT) = CAST(c.product_id AS TEXT)
              WHERE c.user_id=$1`,
             [user_id]
         );

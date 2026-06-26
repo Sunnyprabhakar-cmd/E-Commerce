@@ -47,7 +47,7 @@ await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS piece INTEGER NOT 
 export const addProduct = async (id,name, price, category,piece ,availability) => {
     await ensureProductSchema();
     const newProduct = {
-    id: Number(id),
+    id: String(id),
     name,
     price: Number(price),
     category,
@@ -78,7 +78,7 @@ export const fetchAllProduct = async () => {
 export const fetchProductById = async (idOrName) => {
     await ensureProductSchema();
     const product = await db.query(
-        "SELECT id,name,price,category,piece,availability FROM products WHERE id=$1 OR name=$1 LIMIT 1",
+        "SELECT id,name,price,category,piece,availability FROM products WHERE CAST(id AS TEXT)=CAST($1 AS TEXT) OR CAST(name AS TEXT)=CAST($1 AS TEXT) LIMIT 1",
         [idOrName]
     );
     return product.rows[0] || null;

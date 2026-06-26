@@ -80,7 +80,7 @@ const Dashboard = () => {
   }
 
   const visibleViews = isAdmin
-    ? ['overview', 'list', 'orders', 'stock', 'employees']
+    ? ['overview', 'list', 'form', 'orders', 'stock', 'employees']
     : ['list', 'cart', 'orders'];
 
   useEffect(() => {

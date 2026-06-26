@@ -18,9 +18,12 @@ import {
 } from "../payment/wallet.js";
 import {
     getAdminSummary,
+    getRecentProducts,
+    getRecentStockEntries,
     getStockEntries,
     createStockEntry,
     listEmployees,
+    listUsers,
     saveEmployeePermissions,
     adjustEmployeeSalary,
     getSalaryHistory,
@@ -471,8 +474,19 @@ export const adminOrderAction = async (req, res) => {
 
 export const adminSummary = async (_req, res) => {
     try {
-        const summary = await getAdminSummary();
-        return res.status(200).json({ message: 'summary fetched', summary });
+        const { startDate = null, endDate = null } = _req.query || {};
+        const [summary, recentProducts, recentStockEntries] = await Promise.all([
+            getAdminSummary({ startDate, endDate }),
+            getRecentProducts(10),
+            getRecentStockEntries(10),
+        ]);
+        return res.status(200).json({
+            message: 'summary fetched',
+            summary,
+            recent_products: recentProducts,
+            recent_stock_entries: recentStockEntries,
+            filters: { startDate: startDate || null, endDate: endDate || null },
+        });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
     }
@@ -490,7 +504,7 @@ export const stockList = async (_req, res) => {
 export const stockCreate = async (req, res) => {
     try {
         const result = await createStockEntry({
-            product_id: req.body.product_id || req.body.productId,
+            product_id: String(req.body.product_id || req.body.productId || ''),
             units: req.body.units,
             notes: req.body.notes,
             recorded_by_user_id: req.user.id || req.user.email,
@@ -511,6 +525,15 @@ export const employeeList = async (_req, res) => {
     try {
         const employees = await listEmployees();
         return res.status(200).json({ message: 'employees fetched', employees });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const userList = async (_req, res) => {
+    try {
+        const users = await listUsers();
+        return res.status(200).json({ message: 'users fetched', users });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
     }

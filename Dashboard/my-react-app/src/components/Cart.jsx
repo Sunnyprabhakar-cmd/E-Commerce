@@ -274,12 +274,6 @@ const Cart = ({ onNavigate }) => {
       </div>
       <h2>Shopping Cart</h2>
       {message && <div className="alert alert-info">{message}</div>}
-      <div className="alert alert-secondary d-flex justify-content-between align-items-center">
-        <span>Wallet Balance: <strong>${walletBalance.toFixed(2)}</strong></span>
-        <button className="btn btn-sm btn-outline-primary" onClick={() => onNavigate && onNavigate('wallet')}>
-          Add Funds
-        </button>
-      </div>
 
       {cartItems.length === 0 ? (
         <div className="alert alert-warning">Your cart is empty</div>
@@ -403,7 +397,6 @@ const Cart = ({ onNavigate }) => {
                   </div>
                   <div className="modal-body">
                     <p>Total order amount: <strong>${totalPrice.toFixed(2)}</strong></p>
-                    <p>Wallet balance: <strong>${walletBalance.toFixed(2)}</strong></p>
                     <div className="mb-3">
                       <label className="form-label">Payment option</label>
                       <select

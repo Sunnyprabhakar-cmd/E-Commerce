@@ -13,6 +13,7 @@ const emptyPermissions = {
 
 const EmployeeManager = () => {
   const [employees, setEmployees] = useState([]);
+  const [users, setUsers] = useState([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [permissions, setPermissions] = useState(emptyPermissions);
   const [baseSalary, setBaseSalary] = useState('0');
@@ -24,8 +25,12 @@ const EmployeeManager = () => {
 
   const fetchEmployees = async () => {
     try {
-      const response = await api.get('/admin/employees');
-      setEmployees(Array.isArray(response.data?.employees) ? response.data.employees : []);
+      const [employeeResponse, userResponse] = await Promise.all([
+        api.get('/admin/employees'),
+        api.get('/admin/users'),
+      ]);
+      setEmployees(Array.isArray(employeeResponse.data?.employees) ? employeeResponse.data.employees : []);
+      setUsers(Array.isArray(userResponse.data?.users) ? userResponse.data.users : []);
     } catch (error) {
       setMessage(error.response?.data?.message || 'Failed to load employees');
     }
@@ -52,6 +57,21 @@ const EmployeeManager = () => {
   const selectedEmployee = useMemo(
     () => employees.find((employee) => String(employee.id) === String(selectedEmployeeId)),
     [employees, selectedEmployeeId]
+  );
+
+  const promotedUsers = useMemo(
+    () => new Set(employees.map((employee) => String(employee.id))),
+    [employees]
+  );
+
+  const availableUsers = useMemo(
+    () => users.filter((user) => !promotedUsers.has(String(user.id))),
+    [promotedUsers, users]
+  );
+
+  const selectedUser = useMemo(
+    () => users.find((user) => String(user.id) === String(selectedEmployeeId)),
+    [selectedEmployeeId, users]
   );
 
   useEffect(() => {
@@ -131,8 +151,8 @@ const EmployeeManager = () => {
     <div className="container mt-4">
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <div>
-          <h2 className="mb-1">Employee Access and Salary</h2>
-          <p className="text-muted mb-0">Assign rights, set base salary, and record overtime or deductions.</p>
+          <h2 className="mb-1">Employee Access Table</h2>
+          <p className="text-muted mb-0">Manage dedicated employee records, permissions, and salary adjustments.</p>
         </div>
         <button className="btn btn-outline-primary" onClick={fetchEmployees}>Refresh</button>
       </div>
@@ -143,7 +163,7 @@ const EmployeeManager = () => {
         <div className="col-lg-4">
           <div className="card shadow-sm h-100">
             <div className="card-body">
-              <h3 className="card-title">Employees</h3>
+              <h3 className="card-title">Employee Registry</h3>
               <div className="list-group" style={{ maxHeight: '640px', overflowY: 'auto' }}>
                 {employees.map((employee) => (
                   <button
@@ -154,7 +174,7 @@ const EmployeeManager = () => {
                   >
                     <div className="fw-semibold">{employee.name}</div>
                     <div className="small opacity-75">{employee.email}</div>
-                    <div className="small opacity-75">Role: {employee.employee_role || employee.user_role || 'employee'}</div>
+                    <div className="small opacity-75">Role: {employee.employee_role || 'employee'}</div>
                   </button>
                 ))}
                 {employees.length === 0 && <div className="text-muted">No employees found</div>}
@@ -163,14 +183,38 @@ const EmployeeManager = () => {
           </div>
         </div>
 
-        <div className="col-lg-8">
+        <div className="col-lg-4">
+          <div className="card shadow-sm h-100">
+            <div className="card-body">
+              <h3 className="card-title">Available Users</h3>
+              <p className="text-muted small">Pick a user to promote into the employee registry, then save permissions.</p>
+              <div className="list-group" style={{ maxHeight: '640px', overflowY: 'auto' }}>
+                {availableUsers.map((user) => (
+                  <button
+                    type="button"
+                    key={user.id}
+                    className={`list-group-item list-group-item-action ${String(selectedEmployeeId) === String(user.id) ? 'active' : ''}`}
+                    onClick={() => setSelectedEmployeeId(user.id)}
+                  >
+                    <div className="fw-semibold">{user.name}</div>
+                    <div className="small opacity-75">{user.email}</div>
+                    <div className="small opacity-75">Role: {user.role || 'user'}</div>
+                  </button>
+                ))}
+                {availableUsers.length === 0 && <div className="text-muted">No available users to promote</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-lg-4">
           <div className="card shadow-sm mb-4">
             <div className="card-body">
               <h3 className="card-title mb-3">Permissions</h3>
               <div className="row g-3 mb-3">
                 <div className="col-md-6">
                   <label className="form-label">Employee</label>
-                  <input className="form-control" value={selectedEmployee ? `${selectedEmployee.name} (${selectedEmployee.email})` : ''} readOnly placeholder="Select an employee" />
+                  <input className="form-control" value={selectedEmployee ? `${selectedEmployee.name} (${selectedEmployee.email})` : (selectedUser ? `${selectedUser.name} (${selectedUser.email})` : '')} readOnly placeholder="Select an employee or user" />
                 </div>
                 <div className="col-md-3">
                   <label className="form-label">Base Salary</label>

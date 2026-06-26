@@ -39,6 +39,7 @@ router.get("/admin/summary",auth,isAdmin,adminSummary);
 router.get("/admin/stock",auth,requirePermission("can_manage_stock"),stockList);
 router.post("/admin/stock",auth,requirePermission("can_manage_stock"),stockCreate);
 router.get("/admin/employees",auth,isAdmin,employeeList);
+router.get("/admin/users",auth,isAdmin,userList);
 router.post("/admin/employees/:id",auth,isAdmin,employeeUpsert);
 router.post("/admin/employees/:id/salary",auth,isAdmin,employeeSalaryAdjust);
 router.get("/admin/employees/:id/salary",auth,isAdmin,employeeSalaryHistory);
