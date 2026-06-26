@@ -13,6 +13,10 @@ const Auth = ({ onLogin }) => {
   });
   const [message, setMessage] = useState('');
 
+  const notify = (text, type = 'info') => {
+    window.dispatchEvent(new CustomEvent('app:notify', { detail: { message: text, type } }));
+  };
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -27,6 +31,7 @@ const Auth = ({ onLogin }) => {
 
       const response = await axios.post(`${API_BASE}${endpoint}`, payload);
       setMessage(response.data.message || 'Success');
+      notify(response.data.message || 'Success', 'success');
 
       if (isLogin && response.data.token) {
         localStorage.setItem('token', response.data.token);
@@ -41,6 +46,7 @@ const Auth = ({ onLogin }) => {
     } catch (error) {
       const apiMessage = error.response?.data?.message;
       setMessage(apiMessage || 'Error occurred');
+      notify(apiMessage || 'Error occurred', 'danger');
     }
   };
 

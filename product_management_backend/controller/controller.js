@@ -27,6 +27,8 @@ import {
     saveEmployeeProfile,
     generateEmployeeInvite,
     activateEmployeeInvite,
+    generateCustomerInvite,
+    activateCustomerInvite,
     getSalarySummary,
     saveEmployeePermissions,
     adjustEmployeeSalary,
@@ -613,6 +615,47 @@ export const employeeInviteActivate = async (req, res) => {
             token: accessToken,
             refreshToken,
         });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const customerInviteCreate = async (req, res) => {
+    try {
+        const result = await generateCustomerInvite({
+            created_by_user_id: req.user.id || req.user.email,
+            created_by_name: req.user.name || req.user.username || null,
+            invite_email: req.body.invite_email || req.body.email || null,
+            invite_phone: req.body.invite_phone || req.body.phone || null,
+            daysValid: req.body.daysValid || 7,
+        });
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        const baseUrl = process.env.PUBLIC_APP_URL || 'http://localhost:5173';
+        return res.status(200).json({
+            message: 'invite created',
+            invite: result.invite,
+            invite_link: `${baseUrl}/customer-invite/${result.invite.invite_token}`,
+        });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const customerInviteActivate = async (req, res) => {
+    try {
+        const result = await activateCustomerInvite({
+            invite_token: req.params.token,
+            name: req.body.name,
+            email: req.body.email,
+            phone: req.body.phone,
+            password: req.body.password,
+        });
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'customer account created', ...result });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
     }

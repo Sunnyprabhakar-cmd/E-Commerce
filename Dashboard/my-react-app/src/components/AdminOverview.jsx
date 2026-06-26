@@ -14,7 +14,12 @@ const AdminOverview = ({ onNavigate }) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [message, setMessage] = useState('');
+  const [customerInviteLink, setCustomerInviteLink] = useState('');
   const [appliedRange, setAppliedRange] = useState({ startDate: '', endDate: '' });
+
+  const notify = (text, type = 'info') => {
+    window.dispatchEvent(new CustomEvent('app:notify', { detail: { message: text, type } }));
+  };
 
   const fetchSummary = async ({ startDate: selectedStartDate = '', endDate: selectedEndDate = '' } = {}) => {
     try {
@@ -79,6 +84,19 @@ const AdminOverview = ({ onNavigate }) => {
     fetchSummary({ startDate, endDate });
   };
 
+  const createCustomerInvite = async () => {
+    try {
+      const response = await api.post('/admin/customer-invites', {});
+      const inviteLink = response.data?.invite_link || '';
+      setCustomerInviteLink(inviteLink);
+      notify('Customer invite link generated', 'success');
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || 'Failed to generate customer invite link';
+      setMessage(errorMessage);
+      notify(errorMessage, 'danger');
+    }
+  };
+
   const totalAmount = Number(summary?.total_amount || 0);
   const totalPaidAmount = Number(summary?.total_paid_amount || 0);
   const totalGeneratedAfterDiscount = Number(summary?.total_generated_after_discount || 0);
@@ -95,8 +113,15 @@ const AdminOverview = ({ onNavigate }) => {
           <button className="btn btn-outline-primary" onClick={() => fetchSummary(appliedRange)}>Refresh</button>
           {onNavigate && <button className="btn btn-primary" onClick={() => onNavigate('stock')}>Open Stock</button>}
           {onNavigate && <button className="btn btn-outline-dark" onClick={() => onNavigate('employee-records')}>Open Employees</button>}
+          <button className="btn btn-outline-success" onClick={createCustomerInvite}>Generate Customer Invite</button>
         </div>
       </div>
+
+      {customerInviteLink && (
+        <div className="alert alert-success d-flex justify-content-between align-items-center gap-2">
+          <div className="text-break">Customer invite link: <a href={customerInviteLink} target="_blank" rel="noreferrer">{customerInviteLink}</a></div>
+        </div>
+      )}
 
       <div className="card shadow-sm border-0 mb-4">
         <div className="card-body">

@@ -100,6 +100,19 @@ export const ensureAdminPortalSchema = async () => {
         `);
 
         await db.query(`
+            CREATE TABLE IF NOT EXISTS customer_invites (
+                invite_token TEXT PRIMARY KEY,
+                created_by_user_id TEXT,
+                created_by_name TEXT,
+                invite_email TEXT,
+                invite_phone TEXT,
+                invite_expires_at TIMESTAMP NOT NULL,
+                used_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        await db.query(`
             CREATE TABLE IF NOT EXISTS refresh_tokens (
                 refresh_token_id SERIAL PRIMARY KEY,
                 user_id TEXT NOT NULL,
@@ -147,6 +160,12 @@ export const ensureAdminPortalSchema = async () => {
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS created_by_user_id TEXT");
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS created_by_name TEXT");
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()");
+    await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS created_by_user_id TEXT");
+    await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS created_by_name TEXT");
+    await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS invite_email TEXT");
+    await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS invite_phone TEXT");
+    await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMP NOT NULL DEFAULT NOW() + INTERVAL '7 days'");
+    await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS used_at TIMESTAMP");
 
     await db.query(`
         CREATE TABLE IF NOT EXISTS salary_ledger (
@@ -185,182 +204,6 @@ export const getAdminSummary = async ({ startDate = null, endDate = null } = {})
          ${whereClause}`,
         params
     );
-
-        await db.query(
-            `INSERT INTO employee_permissions(employee_id, employee_name, role, updated_at)
-             VALUES ($1,$2,'employee',NOW())
-             ON CONFLICT (employee_id) DO UPDATE SET employee_name = EXCLUDED.employee_name, updated_at = NOW()`,
-            [String(employee_id), employee_name]
-        );
-
-        await db.query(
-            `INSERT INTO employee_accounts(employee_id, invite_token, invite_expires_at, updated_at)
-             VALUES ($1,$2,$3,NOW())
-             ON CONFLICT (employee_id) DO UPDATE SET invite_token = EXCLUDED.invite_token, invite_expires_at = EXCLUDED.invite_expires_at, updated_at = NOW()`,
-            [String(employee_id), inviteToken, expiresAt]
-        );
-
-        return {
-            ok: true,
-            invite: {
-                invite_token: inviteToken,
-                employee_id: String(employee_id),
-                employee_name: employee.rows[0].employee_name,
-                phone: employee.rows[0].phone || null,
-                invite_expires_at: expiresAt,
-            },
-        };
-    };
-
-    export const generateEmployeeInvite = async ({ employee_id, created_by_user_id, created_by_name, daysValid = 7 }) => {
-        await ensureAdminPortalSchema();
-        if (!employee_id) {
-            return { ok: false, message: 'Employee id is required' };
-        }
-
-        const employee = await db.query(
-            'SELECT employee_id, employee_name, phone FROM employee_profiles WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1',
-            [employee_id]
-        );
-        if (!employee.rows?.[0]) {
-            return { ok: false, message: 'Employee not found' };
-        }
-
-        const inviteToken = crypto.randomUUID();
-        const expiresAt = new Date(Date.now() + Number(daysValid || 7) * 24 * 60 * 60 * 1000);
-
-        await db.query(
-            `INSERT INTO employee_invites(invite_token, employee_id, created_by_user_id, created_by_name, invite_expires_at)
-             VALUES ($1,$2,$3,$4,$5)
-             ON CONFLICT (invite_token) DO UPDATE SET invite_expires_at = EXCLUDED.invite_expires_at`,
-            [inviteToken, String(employee_id), created_by_user_id || null, created_by_name || null, expiresAt]
-        );
-
-        return {
-            ok: true,
-            invite: {
-                invite_token: inviteToken,
-                employee_id: String(employee_id),
-                employee_name: employee.rows[0].employee_name,
-                phone: employee.rows[0].phone || null,
-                invite_expires_at: expiresAt,
-            },
-        };
-    };
-
-    export const activateEmployeeInvite = async ({ invite_token, name, email, phone, password }) => {
-        await ensureAdminPortalSchema();
-        if (!invite_token || !email || !password) {
-            return { ok: false, message: 'Invite token, email and password are required' };
-        }
-
-        const inviteResult = await db.query(
-            `SELECT invite_token, employee_id, invite_expires_at, used_at
-             FROM employee_invites
-             WHERE invite_token = $1
-             LIMIT 1`,
-            [invite_token]
-        );
-        const invite = inviteResult.rows?.[0];
-        if (!invite) {
-            return { ok: false, message: 'Invalid invite link' };
-        }
-        if (invite.used_at) {
-            return { ok: false, message: 'Invite link already used' };
-        }
-        if (new Date(invite.invite_expires_at).getTime() < Date.now()) {
-            return { ok: false, message: 'Invite link expired' };
-        }
-
-        const employee = await db.query(
-            'SELECT employee_id, employee_name, phone FROM employee_profiles WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1',
-            [invite.employee_id]
-        );
-        const employeeRecord = employee.rows?.[0];
-        if (!employeeRecord) {
-            return { ok: false, message: 'Employee not found' };
-        }
-
-        const existingEmail = await db.query('SELECT id FROM users WHERE email=$1 LIMIT 1', [email]);
-        if (existingEmail.rows?.[0]) {
-            return { ok: false, message: 'Email already registered' };
-        }
-
-            const passwordHash = await hashPassword(password);
-        const userInsert = await db.query(
-            `INSERT INTO users(name, password, email, phone, role)
-                 VALUES ($1,$2,$3,$4,'employee')
-             RETURNING id, name, email, phone, role`,
-            [name || employeeRecord.employee_name, passwordHash, email, phone || employeeRecord.phone || null]
-        );
-        const user = userInsert.rows?.[0];
-
-        await db.query(
-            `INSERT INTO employee_accounts(employee_id, user_id, login_email, invite_token, invite_expires_at, activated_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
-             ON CONFLICT (employee_id) DO UPDATE SET user_id = EXCLUDED.user_id, login_email = EXCLUDED.login_email, invite_token = EXCLUDED.invite_token, invite_expires_at = EXCLUDED.invite_expires_at, activated_at = NOW(), updated_at = NOW()`,
-            [String(invite.employee_id), String(user.id), email, invite_token, invite.invite_expires_at]
-        );
-
-        await db.query('UPDATE employee_invites SET used_at = NOW() WHERE invite_token = $1', [invite_token]);
-
-        await db.query(
-            `INSERT INTO employee_permissions(employee_id, employee_name, employee_email, role, updated_at)
-             VALUES ($1,$2,$3,'employee',NOW())
-             ON CONFLICT (employee_id) DO UPDATE SET employee_name = EXCLUDED.employee_name, employee_email = EXCLUDED.employee_email, updated_at = NOW()`,
-            [String(invite.employee_id), name || employeeRecord.employee_name, email]
-        );
-
-        return { ok: true, user, employee_id: String(invite.employee_id) };
-    };
-
-    export const linkEmployeeAccount = async (userId) => {
-        await ensureAdminPortalSchema();
-        const result = await db.query(
-            `SELECT employee_id FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
-            [String(userId)]
-        );
-        return result.rows?.[0]?.employee_id || null;
-    };
-
-    export const loadEmployeeAccountByUserId = async (userId) => {
-        await ensureAdminPortalSchema();
-        const result = await db.query(
-            `SELECT employee_id, login_email, invite_token, activated_at FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
-            [String(userId)]
-        );
-        return result.rows?.[0] || null;
-    };
-
-    export const saveRefreshToken = async ({ user_id, token_hash, expires_at }) => {
-        await ensureAdminPortalSchema();
-        await db.query(
-            `INSERT INTO refresh_tokens(user_id, token_hash, expires_at)
-             VALUES ($1,$2,$3)`,
-            [String(user_id), token_hash, expires_at]
-        );
-    };
-
-    export const findRefreshToken = async (token_hash) => {
-        await ensureAdminPortalSchema();
-        const result = await db.query(
-            `SELECT refresh_token_id, user_id, token_hash, expires_at, revoked_at
-             FROM refresh_tokens
-             WHERE token_hash = $1
-             LIMIT 1`,
-            [token_hash]
-        );
-        return result.rows?.[0] || null;
-    };
-
-    export const revokeRefreshToken = async (token_hash) => {
-        await ensureAdminPortalSchema();
-        await db.query(
-            `UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1`,
-            [token_hash]
-        );
-    };
-
     return result.rows?.[0] || {
         total_amount: 0,
         total_paid_amount: 0,
@@ -368,6 +211,238 @@ export const getAdminSummary = async ({ startDate = null, endDate = null } = {})
         total_discount_amount: 0,
         order_count: 0,
     };
+};
+
+export const linkEmployeeAccount = async (userId) => {
+    await ensureAdminPortalSchema();
+    const result = await db.query(
+        `SELECT employee_id FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
+        [String(userId)]
+    );
+    return result.rows?.[0]?.employee_id || null;
+};
+
+export const loadEmployeeAccountByUserId = async (userId) => {
+    await ensureAdminPortalSchema();
+    const result = await db.query(
+        `SELECT employee_id, login_email, invite_token, activated_at FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
+        [String(userId)]
+    );
+    return result.rows?.[0] || null;
+};
+
+export const saveRefreshToken = async ({ user_id, token_hash, expires_at }) => {
+    await ensureAdminPortalSchema();
+    await db.query(
+        `INSERT INTO refresh_tokens(user_id, token_hash, expires_at)
+         VALUES ($1,$2,$3)`,
+        [String(user_id), token_hash, expires_at]
+    );
+};
+
+export const findRefreshToken = async (token_hash) => {
+    await ensureAdminPortalSchema();
+    const result = await db.query(
+        `SELECT refresh_token_id, user_id, token_hash, expires_at, revoked_at
+         FROM refresh_tokens
+         WHERE token_hash = $1
+         LIMIT 1`,
+        [token_hash]
+    );
+    return result.rows?.[0] || null;
+};
+
+export const revokeRefreshToken = async (token_hash) => {
+    await ensureAdminPortalSchema();
+    await db.query(
+        `UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1`,
+        [token_hash]
+    );
+};
+
+export const generateEmployeeInvite = async ({ employee_id, created_by_user_id, created_by_name, daysValid = 7 }) => {
+    await ensureAdminPortalSchema();
+    if (!employee_id) {
+        return { ok: false, message: 'Employee id is required' };
+    }
+
+    const employee = await db.query(
+        'SELECT employee_id, employee_name, phone FROM employee_profiles WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1',
+        [employee_id]
+    );
+    if (!employee.rows?.[0]) {
+        return { ok: false, message: 'Employee not found' };
+    }
+
+    const inviteToken = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + Number(daysValid || 7) * 24 * 60 * 60 * 1000);
+    await db.query(
+        `INSERT INTO employee_invites(invite_token, employee_id, created_by_user_id, created_by_name, invite_expires_at)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (invite_token) DO UPDATE SET invite_expires_at = EXCLUDED.invite_expires_at`,
+        [inviteToken, String(employee_id), created_by_user_id || null, created_by_name || null, expiresAt]
+    );
+
+    return {
+        ok: true,
+        invite: {
+            invite_token: inviteToken,
+            employee_id: String(employee_id),
+            employee_name: employee.rows[0].employee_name,
+            phone: employee.rows[0].phone || null,
+            invite_expires_at: expiresAt,
+        },
+    };
+};
+
+export const activateEmployeeInvite = async ({ invite_token, name, email, phone, password }) => {
+    await ensureAdminPortalSchema();
+    if (!invite_token || !email || !password) {
+        return { ok: false, message: 'Invite token, email and password are required' };
+    }
+
+    const inviteResult = await db.query(
+        `SELECT invite_token, employee_id, invite_expires_at, used_at
+         FROM employee_invites
+         WHERE invite_token = $1
+         LIMIT 1`,
+        [invite_token]
+    );
+    const invite = inviteResult.rows?.[0];
+    if (!invite) return { ok: false, message: 'Invalid invite link' };
+    if (invite.used_at) return { ok: false, message: 'Invite link already used' };
+    if (new Date(invite.invite_expires_at).getTime() < Date.now()) return { ok: false, message: 'Invite link expired' };
+
+    const employee = await db.query(
+        'SELECT employee_id, employee_name, phone FROM employee_profiles WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1',
+        [invite.employee_id]
+    );
+    const employeeRecord = employee.rows?.[0];
+    if (!employeeRecord) return { ok: false, message: 'Employee not found' };
+
+    const existingEmail = await db.query('SELECT id FROM users WHERE email=$1 LIMIT 1', [email]);
+    if (existingEmail.rows?.[0]) return { ok: false, message: 'Email already registered' };
+
+    const passwordHash = await hashPassword(password);
+    const userInsert = await db.query(
+        `INSERT INTO users(name, password, email, phone, role)
+         VALUES ($1,$2,$3,$4,'employee')
+         RETURNING id, name, email, phone, role`,
+        [name || employeeRecord.employee_name, passwordHash, email, phone || employeeRecord.phone || null]
+    );
+    const user = userInsert.rows?.[0];
+
+    await db.query(
+        `INSERT INTO employee_accounts(employee_id, user_id, login_email, invite_token, invite_expires_at, activated_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NOW(),NOW())
+         ON CONFLICT (employee_id) DO UPDATE SET user_id = EXCLUDED.user_id, login_email = EXCLUDED.login_email, invite_token = EXCLUDED.invite_token, invite_expires_at = EXCLUDED.invite_expires_at, activated_at = NOW(), updated_at = NOW()`,
+        [String(invite.employee_id), String(user.id), email, invite_token, invite.invite_expires_at]
+    );
+
+    await db.query('UPDATE employee_invites SET used_at = NOW() WHERE invite_token = $1', [invite_token]);
+    await db.query(
+        `INSERT INTO employee_permissions(employee_id, employee_name, employee_email, role, updated_at)
+         VALUES ($1,$2,$3,'employee',NOW())
+         ON CONFLICT (employee_id) DO UPDATE SET employee_name = EXCLUDED.employee_name, employee_email = EXCLUDED.employee_email, updated_at = NOW()`,
+        [String(invite.employee_id), name || employeeRecord.employee_name, email]
+    );
+
+    return { ok: true, user, employee_id: String(invite.employee_id) };
+};
+
+export const generateCustomerInvite = async ({ created_by_user_id, created_by_name, invite_email = null, invite_phone = null, daysValid = 7 }) => {
+    await ensureAdminPortalSchema();
+    const inviteToken = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + Number(daysValid || 7) * 24 * 60 * 60 * 1000);
+
+    await db.query(
+        `INSERT INTO customer_invites(invite_token, created_by_user_id, created_by_name, invite_email, invite_phone, invite_expires_at)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (invite_token) DO UPDATE SET invite_email = EXCLUDED.invite_email, invite_phone = EXCLUDED.invite_phone, invite_expires_at = EXCLUDED.invite_expires_at`,
+        [inviteToken, created_by_user_id || null, created_by_name || null, invite_email || null, invite_phone || null, expiresAt]
+    );
+
+    return { ok: true, invite: { invite_token: inviteToken, invite_email, invite_phone, invite_expires_at: expiresAt } };
+};
+
+export const activateCustomerInvite = async ({ invite_token, name, email, phone, password }) => {
+    await ensureAdminPortalSchema();
+    if (!invite_token || !email || !password) {
+        return { ok: false, message: 'Invite token, email and password are required' };
+    }
+
+    const inviteResult = await db.query(
+        `SELECT invite_token, invite_email, invite_phone, invite_expires_at, used_at
+         FROM customer_invites
+         WHERE invite_token = $1
+         LIMIT 1`,
+        [invite_token]
+    );
+    const invite = inviteResult.rows?.[0];
+    if (!invite) return { ok: false, message: 'Invalid invite link' };
+    if (invite.used_at) return { ok: false, message: 'Invite link already used' };
+    if (new Date(invite.invite_expires_at).getTime() < Date.now()) return { ok: false, message: 'Invite link expired' };
+
+    const existingEmail = await db.query('SELECT id FROM users WHERE email=$1 LIMIT 1', [email]);
+    if (existingEmail.rows?.[0]) return { ok: false, message: 'Email already registered' };
+
+    const passwordHash = await hashPassword(password);
+    const userInsert = await db.query(
+        `INSERT INTO users(name, password, email, phone, role)
+         VALUES ($1,$2,$3,$4,'user')
+         RETURNING id, name, email, phone, role`,
+        [name || email, passwordHash, email, phone || invite.invite_phone || null]
+    );
+
+    await db.query('UPDATE customer_invites SET used_at = NOW() WHERE invite_token = $1', [invite_token]);
+    return { ok: true, user: userInsert.rows?.[0] || null };
+};
+
+export const linkEmployeeAccount = async (userId) => {
+    await ensureAdminPortalSchema();
+    const result = await db.query(
+        `SELECT employee_id FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
+        [String(userId)]
+    );
+    return result.rows?.[0]?.employee_id || null;
+};
+
+export const loadEmployeeAccountByUserId = async (userId) => {
+    await ensureAdminPortalSchema();
+    const result = await db.query(
+        `SELECT employee_id, login_email, invite_token, activated_at FROM employee_accounts WHERE CAST(user_id AS TEXT)=CAST($1 AS TEXT) LIMIT 1`,
+        [String(userId)]
+    );
+    return result.rows?.[0] || null;
+};
+
+export const saveRefreshToken = async ({ user_id, token_hash, expires_at }) => {
+    await ensureAdminPortalSchema();
+    await db.query(
+        `INSERT INTO refresh_tokens(user_id, token_hash, expires_at)
+         VALUES ($1,$2,$3)`,
+        [String(user_id), token_hash, expires_at]
+    );
+};
+
+export const findRefreshToken = async (token_hash) => {
+    await ensureAdminPortalSchema();
+    const result = await db.query(
+        `SELECT refresh_token_id, user_id, token_hash, expires_at, revoked_at
+         FROM refresh_tokens
+         WHERE token_hash = $1
+         LIMIT 1`,
+        [token_hash]
+    );
+    return result.rows?.[0] || null;
+};
+
+export const revokeRefreshToken = async (token_hash) => {
+    await ensureAdminPortalSchema();
+    await db.query(
+        `UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1`,
+        [token_hash]
+    );
 };
 
 export const getRecentProducts = async (limit = 10) => {

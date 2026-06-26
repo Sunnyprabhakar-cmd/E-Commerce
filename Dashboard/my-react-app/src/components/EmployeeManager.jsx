@@ -44,6 +44,10 @@ const EmployeeManager = ({ mode = 'records' }) => {
   const [inviteLink, setInviteLink] = useState('');
   const [message, setMessage] = useState('');
 
+  const notify = (text, type = 'info') => {
+    window.dispatchEvent(new CustomEvent('app:notify', { detail: { message: text, type } }));
+  };
+
   const selectedEmployee = useMemo(
   () =>
     employees.find(
@@ -161,10 +165,13 @@ const EmployeeManager = ({ mode = 'records' }) => {
         notes: employeeForm.notes,
       });
       setMessage('Employee profile saved');
+      notify('Employee profile saved', 'success');
       await fetchEmployees();
       setSelectedEmployeeId(String(employeeForm.employee_id));
     } catch (error) {
-      setMessage(error.response?.data?.message || 'Failed to save employee profile');
+      const errorMessage = error.response?.data?.message || 'Failed to save employee profile';
+      setMessage(errorMessage);
+      notify(errorMessage, 'danger');
     }
   };
 
@@ -177,10 +184,13 @@ const EmployeeManager = ({ mode = 'records' }) => {
     try {
       await api.post(`/admin/employees/${selectedEmployeeId}/permissions`, permissions);
       setMessage('Employee permissions saved');
+      notify('Employee permissions saved', 'success');
       await fetchEmployees();
       await fetchSalaryHistory(selectedEmployeeId);
     } catch (error) {
-      setMessage(error.response?.data?.message || 'Failed to save employee permissions');
+      const errorMessage = error.response?.data?.message || 'Failed to save employee permissions';
+      setMessage(errorMessage);
+      notify(errorMessage, 'danger');
     }
   };
 
@@ -201,11 +211,14 @@ const EmployeeManager = ({ mode = 'records' }) => {
         reason: salaryEntry.reason,
       });
       setMessage('Salary entry saved');
+      notify('Salary entry saved', 'success');
       setSalaryEntry(emptySalaryEntry);
       await fetchEmployees();
       await fetchSalaryHistory(selectedEmployeeId);
     } catch (error) {
-      setMessage(error.response?.data?.message || 'Failed to save salary entry');
+      const errorMessage = error.response?.data?.message || 'Failed to save salary entry';
+      setMessage(errorMessage);
+      notify(errorMessage, 'danger');
     }
   };
 
@@ -219,8 +232,11 @@ const EmployeeManager = ({ mode = 'records' }) => {
       const response = await api.post(`/admin/employees/${selectedEmployeeId}/invite`, {});
       setInviteLink(response.data?.invite_link || '');
       setMessage('Employee invite link generated');
+      notify('Employee invite link generated', 'success');
     } catch (error) {
-      setMessage(error.response?.data?.message || 'Failed to generate invite link');
+      const errorMessage = error.response?.data?.message || 'Failed to generate invite link';
+      setMessage(errorMessage);
+      notify(errorMessage, 'danger');
     }
   };
 
