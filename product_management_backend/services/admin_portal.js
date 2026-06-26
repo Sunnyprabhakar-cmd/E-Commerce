@@ -25,20 +25,18 @@ export const ensureAdminPortalSchema = async () => {
         return;
     }
 
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS employee_accounts (
+            employee_id TEXT PRIMARY KEY,
+            user_id TEXT,
+            login_email TEXT UNIQUE,
+            invite_token TEXT UNIQUE,
+            invite_expires_at TIMESTAMP,
+            activated_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        )
     `);
-
-        await db.query(`
-            CREATE TABLE IF NOT EXISTS employee_accounts (
-                employee_id TEXT PRIMARY KEY,
-                user_id TEXT,
-                login_email TEXT UNIQUE,
-                invite_token TEXT UNIQUE,
-                invite_expires_at TIMESTAMP,
-                activated_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
 
         await db.query(`
             CREATE TABLE IF NOT EXISTS employee_invites (
