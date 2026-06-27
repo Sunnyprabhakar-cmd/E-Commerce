@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import api from '../api/client';
 import { notify } from '../utils/notify';
+import { creditBalance, fetchAvailableBalance } from '../services/walletService';
 import { formatINR } from '../utils/currency';
 
 const Wallet = ({ onNavigate }) => {
@@ -18,7 +18,7 @@ const Wallet = ({ onNavigate }) => {
   const fetchBalance = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/avlBalance');
+      const response = await fetchAvailableBalance();
       setBalance(Number(response.data?.balance || 0));
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Failed to fetch wallet balance';
@@ -37,7 +37,7 @@ const Wallet = ({ onNavigate }) => {
     }
 
     try {
-      await api.post('/balanceCredit', {
+      await creditBalance({
         price: value,
         type: 'credit',
         reference_type: 'wallet_topup',

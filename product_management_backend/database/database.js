@@ -46,10 +46,14 @@ if (!isValidConnectionString(connectionString) && connectionString) {
   console.warn('DATABASE_URL is present but appears invalid. Falling back to explicit PG_* environment variables.');
 }
 
-const db = new pg.Client(dbConfig);
+const db = new pg.Pool(dbConfig);
 
-db.connect()
-  .then(() => console.log("db connected"))
-  .catch(err => console.log("error occured", err));
+db.query('SELECT 1')
+  .then(() => console.log('db connected'))
+  .catch((err) => console.log('error occured', err));
+
+db.on('error', (err) => {
+  console.error('Unexpected database pool error:', err.message);
+});
 
 export default db;

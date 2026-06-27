@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import api from '../api/client';
 import { notify } from '../utils/notify';
+import { createProduct, updateProduct } from '../services/productService';
 
 const getInitialFormData = (product) => ({
   id: product?.id || '',
@@ -39,11 +39,11 @@ const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
     try {
       if (product) {
         // Update
-        await api.post(`/update/${product.id}`, formData);
+        await updateProduct(product.id, formData);
         setMessage('Product updated successfully!');
       } else {
         // Create
-        await api.post('/', formData);
+        await createProduct(formData);
         setMessage('Product created successfully!');
       }
       setTimeout(() => {

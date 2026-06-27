@@ -1,11 +1,60 @@
 import express from "express";
-import {createProduct, getAllProduct,deleteProduct, 
-    getProductById,searchbar, sort_by_price, filterBasedOnPrice,
-    addProductIntoCart,deleteProductIntoCart,updateProductIntoCart,
-    cartInfo,addToOrders,removeOrder,orderDetail,adminOrderDetail,adminOrderAction,getOrderActionHistory,
+import {
+    createProduct,
+    getAllProduct,
+    deleteProduct,
+    getProductById,
+    searchbar,
+    sort_by_price,
+    filterBasedOnPrice,
+    addProductIntoCart,
+    deleteProductIntoCart,
+    updateProductIntoCart,
+    cartInfo,
+    addToOrders,
+    removeOrder,
+    orderDetail,
+    adminOrderDetail,
+    adminOrderAction,
+    getOrderActionHistory,
     avlBalance,
-    balance_sub,wallet_details,add_balancee,adminSummary,stockList,stockCreate,employeeList,employeeProfileUpsert,employeeInviteCreate,employeeInviteActivate,customerInviteCreate,customerInviteActivate,employeeUpsert,employeeSalaryAdjust,employeeSalaryHistory,salarySummary,refreshAuthToken} 
-    from "../controller/controller.js";
+    balance_sub,
+    wallet_details,
+    add_balancee,
+    adminSummary,
+    stockList,
+    stockCreate,
+    employeeList,
+    employeeProfileUpsert,
+    employeeDelete,
+    employeeInviteCreate,
+    employeeInviteActivate,
+    employeeInviteInspect,
+    customerInviteCreate,
+    customerInviteActivate,
+    customerInviteInspect,
+    employeeUpsert,
+    employeeSalaryAdjust,
+    employeeSalaryHistory,
+    salarySummary,
+    refreshAuthToken,
+    systemSettingsList,
+    systemSettingsSave,
+    themeList,
+    themeSave,
+    themeActivate,
+    themeDelete,
+    invoiceTemplateList,
+    invoiceTemplateSave,
+    invoiceTemplateActivate,
+    invoiceTemplateDelete,
+    userList,
+    userRoleUpdate,
+    userSessionList,
+    activityLogList,
+    reminderSettingsSave,
+    supportSettingsSave,
+} from "../controller/controller.js";
 import  update_product  from "../services/update_product.js";
 import  registeration  from "../login&registration/register.js";
 import  login_user  from "../login&registration/login.js";
@@ -19,9 +68,10 @@ const router=express.Router();
 router.post("/register",authlimiter,registeration);
 router.post("/login",authlimiter,login_user);
 router.post("/auth/refresh",refreshAuthToken);
+router.get("/employee-invites/:token",employeeInviteInspect);
+router.get("/customer-invites/:token",customerInviteInspect);
 router.post("/employee-invites/:token/activate",authlimiter,employeeInviteActivate);
 router.post("/customer-invites/:token/activate",authlimiter,customerInviteActivate);
-
 // Protected routes - specific routes BEFORE generic ones
 router.post("/search",auth,searchbar);
 router.post("/filter",auth,filterBasedOnPrice);
@@ -44,11 +94,28 @@ router.post("/admin/stock",auth,requirePermission("can_manage_stock"),stockCreat
 router.get("/admin/employees",auth,isAdmin,employeeList);
 router.get("/admin/salary-summary",auth,isAdmin,salarySummary);
 router.post("/admin/employees/:id/profile",auth,isAdmin,employeeProfileUpsert);
+router.delete("/admin/employees/:id",auth,isAdmin,employeeDelete);
 router.post("/admin/employees/:id/invite",auth,isAdmin,employeeInviteCreate);
 router.post("/admin/customer-invites",auth,isAdmin,customerInviteCreate);
 router.post("/admin/employees/:id/permissions",auth,isAdmin,employeeUpsert);
 router.post("/admin/employees/:id/salary",auth,isAdmin,employeeSalaryAdjust);
 router.get("/admin/employees/:id/salary",auth,isAdmin,employeeSalaryHistory);
+router.get("/admin/settings",auth,isAdmin,systemSettingsList);
+router.post("/admin/settings/:key",auth,isAdmin,systemSettingsSave);
+router.get("/admin/users",auth,isAdmin,userList);
+router.post("/admin/users/:id/role",auth,isAdmin,userRoleUpdate);
+router.get("/admin/users/:id/sessions",auth,isAdmin,userSessionList);
+router.get("/admin/activity-logs",auth,isAdmin,activityLogList);
+router.post("/admin/reminders",auth,isAdmin,reminderSettingsSave);
+router.post("/admin/support-settings",auth,isAdmin,supportSettingsSave);
+router.get("/admin/themes",auth,isAdmin,themeList);
+router.post("/admin/themes/:key",auth,isAdmin,themeSave);
+router.post("/admin/themes/:key/activate",auth,isAdmin,themeActivate);
+router.delete("/admin/themes/:key",auth,isAdmin,themeDelete);
+router.get("/admin/invoice-templates",auth,isAdmin,invoiceTemplateList);
+router.post("/admin/invoice-templates/:key",auth,isAdmin,invoiceTemplateSave);
+router.post("/admin/invoice-templates/:key/activate",auth,isAdmin,invoiceTemplateActivate);
+router.delete("/admin/invoice-templates/:key",auth,isAdmin,invoiceTemplateDelete);
 router.get("/orderDetail",auth,orderDetail);
 router.get("/walletDetail",auth,wallet_details);
 router.get("/avlBalance",auth,avlBalance);

@@ -24,6 +24,8 @@ export const ensureProductSchema = async () => {
         CREATE TABLE IF NOT EXISTS products (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
+            sku TEXT,
+            barcode TEXT,
             price NUMERIC(12,2) NOT NULL CHECK (price >= 0),
             category TEXT NOT NULL,
             piece INTEGER NOT NULL DEFAULT 0,
@@ -34,6 +36,8 @@ export const ensureProductSchema = async () => {
 
     // Ensure required columns exist in legacy tables.
    await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()");
+await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS sku TEXT");
+await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode TEXT");
 await db.query(
   "ALTER TABLE products ADD COLUMN IF NOT EXISTS availability BOOLEAN NOT NULL DEFAULT TRUE"
 );
@@ -44,7 +48,7 @@ await db.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS piece INTEGER NOT 
     isProductSchemaReady = true;
 };
 
-export const addProduct = async (id,name, price, category,piece ,availability) => {
+export const addProduct = async (id,name, price, category,piece ,availability, sku = null, barcode = null) => {
     await ensureProductSchema();
     const newProduct = {
     id: String(id),
@@ -53,13 +57,17 @@ export const addProduct = async (id,name, price, category,piece ,availability) =
     category,
     piece: Number(piece),
     availability,
+    sku: sku ? String(sku) : null,
+    barcode: barcode ? String(barcode) : null,
 };
 
     const inserted = await db.query(
-        "INSERT INTO products(id,name,price,category,piece,availability) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,name,price,category,piece,availability",
+        "INSERT INTO products(id,name,sku,barcode,price,category,piece,availability) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,name,sku,barcode,price,category,piece,availability",
         [
             newProduct.id,
             newProduct.name,
+            newProduct.sku,
+            newProduct.barcode,
             newProduct.price,
             newProduct.category,
             newProduct.piece,
@@ -71,14 +79,14 @@ export const addProduct = async (id,name, price, category,piece ,availability) =
 
 export const fetchAllProduct = async () => {
     await ensureProductSchema();
-    const products = await db.query("SELECT id,name,price,category,piece,availability FROM products ORDER BY CASE WHEN CAST(id AS TEXT) ~ '^[0-9]+$' THEN CAST(id AS INTEGER) END ASC NULLS LAST, CAST(id AS TEXT) ASC");
+    const products = await db.query("SELECT id,name,sku,barcode,price,category,piece,availability FROM products ORDER BY CASE WHEN CAST(id AS TEXT) ~ '^[0-9]+$' THEN CAST(id AS INTEGER) END ASC NULLS LAST, CAST(id AS TEXT) ASC");
     return products.rows;
 };
 
 export const fetchProductById = async (idOrName) => {
     await ensureProductSchema();
     const product = await db.query(
-        "SELECT id,name,price,category,piece,availability FROM products WHERE CAST(id AS TEXT)=CAST($1 AS TEXT) OR CAST(name AS TEXT)=CAST($1 AS TEXT) LIMIT 1",
+        "SELECT id,name,sku,barcode,price,category,piece,availability FROM products WHERE CAST(id AS TEXT)=CAST($1 AS TEXT) OR CAST(name AS TEXT)=CAST($1 AS TEXT) OR CAST(sku AS TEXT)=CAST($1 AS TEXT) OR CAST(barcode AS TEXT)=CAST($1 AS TEXT) LIMIT 1",
         [idOrName]
     );
     return product.rows[0] || null;

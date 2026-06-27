@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Auth from './Auth';
 import ProductList from './ProductList';
 import ProductForm from './ProductForm';
@@ -7,7 +7,14 @@ import Orders from './Orders';
 import AdminOverview from './AdminOverview';
 import StockManager from './StockManager';
 import EmployeeManager from './EmployeeManager';
-import api from '../api/client';
+import CustomInvoice from './CustomInvoice';
+import InvoiceDesigner from './InvoiceDesigner';
+import SettingsCenter from './SettingsCenter';
+import { fetchCartInfo } from '../services/cartService';
+import DashboardLayout from './layout/DashboardLayout';
+import { dashboardHomeView, getNavigationItems } from '../constants/navigation';
+import { refreshAuthToken } from '../services/authService';
+import LoadingSpinner from './common/LoadingSpinner';
 
 const decodeToken = (token) => {
   try {
@@ -20,34 +27,36 @@ const decodeToken = (token) => {
   }
 };
 
+const isJwtExpired = (token) => {
+  try {
+    const decoded = decodeToken(token);
+    if (!decoded?.exp) {
+      return false;
+    }
+    return Date.now() >= decoded.exp * 1000;
+  } catch {
+    return true;
+  }
+};
+
 const Dashboard = () => {
   const existingToken = localStorage.getItem('token');
   const [isLoggedIn, setIsLoggedIn] = useState(!!existingToken);
+  const [authReady, setAuthReady] = useState(!existingToken);
   const [session, setSession] = useState(() => decodeToken(existingToken));
   const userRole = session?.role || null;
   const permissions = session?.permissions || {};
   const [currentView, setCurrentView] = useState(() => {
-    return localStorage.getItem('currentView') || (userRole === 'admin' ? 'overview' : 'list');
+    return localStorage.getItem('currentView') || dashboardHomeView(userRole);
   });
   const [editingProduct, setEditingProduct] = useState(null);
   const [cartCount, setCartCount] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const canManageProducts = userRole === 'admin' || permissions.can_create_product || permissions.can_update_product || permissions.can_delete_product;
-  const canManageStock = userRole === 'admin' || permissions.can_manage_stock;
-  const canManageEmployees = userRole === 'admin' || permissions.can_manage_employees;
   const isAdmin = userRole === 'admin';
 
-  const navItems = [
-    isAdmin ? { view: 'overview', label: 'Overview' } : null,
-    { view: 'list', label: 'Products' },
-    !isAdmin ? { view: 'cart', label: `Cart${cartCount > 0 ? ` (${cartCount})` : ''}` } : null,
-    { view: 'orders', label: 'Orders' },
-    isAdmin ? { view: 'stock', label: 'Stock' } : null,
-    isAdmin ? { view: 'employee-records', label: 'Employees' } : null,
-    isAdmin ? { view: 'employee-permissions', label: 'Permissions' } : null,
-    isAdmin ? { view: 'employee-salary', label: 'Salary' } : null,
-  ].filter(Boolean);
+  const navItems = useMemo(() => getNavigationItems({ role: userRole, cartCount }), [cartCount, userRole]);
 
   const handleViewChange = (view) => {
     setCurrentView(view);
@@ -60,7 +69,7 @@ const Dashboard = () => {
     setIsLoggedIn(true);
     const nextSession = decodeToken(token);
     setSession(nextSession);
-    const allowedInitialView = nextSession?.role === 'admin' ? 'overview' : 'list';
+    const allowedInitialView = dashboardHomeView(nextSession?.role);
     setCurrentView(allowedInitialView);
     localStorage.setItem('currentView', allowedInitialView);
   };
@@ -71,7 +80,7 @@ const Dashboard = () => {
     localStorage.removeItem('currentView');
     setIsLoggedIn(false);
     setSession(null);
-    setCurrentView('list');
+    setCurrentView(dashboardHomeView(null));
     setEditingProduct(null);
     setCartCount(0);
   };
@@ -83,7 +92,7 @@ const Dashboard = () => {
     }
 
     try {
-      const response = await api.get('/cartInfo');
+      const response = await fetchCartInfo();
       const items = Array.isArray(response.data?.data) ? response.data.data : [];
       const totalItems = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
       setCartCount(totalItems);
@@ -108,110 +117,146 @@ const Dashboard = () => {
     setEditingProduct(null);
   };
 
-  if (!isLoggedIn) {
-    return <Auth onLogin={handleLogin} />;
-  }
-
   const visibleViews = isAdmin
-    ? ['overview', 'list', 'form', 'orders', 'stock', 'employee-records', 'employee-permissions', 'employee-salary']
+    ? ['overview', 'list', 'form', 'orders', 'custom-invoice', 'settings/invoice-designer', 'stock', 'employees', 'settings']
     : ['list', 'cart', 'orders'];
 
   useEffect(() => {
     if (!visibleViews.includes(currentView)) {
-      const fallbackView = isAdmin ? 'overview' : 'list';
+      const fallbackView = dashboardHomeView(userRole);
       setCurrentView(fallbackView);
       localStorage.setItem('currentView', fallbackView);
     }
   }, [currentView, isAdmin]);
 
   useEffect(() => {
+    if (!authReady || !isLoggedIn) {
+      return;
+    }
     refreshCartCount();
-  }, [isAdmin, isLoggedIn]);
+  }, [authReady, isAdmin, isLoggedIn]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrapAuth = async () => {
+      if (!existingToken) {
+        setAuthReady(true);
+        return;
+      }
+
+      if (!isJwtExpired(existingToken)) {
+        setAuthReady(true);
+        return;
+      }
+
+      const refreshTokenValue = localStorage.getItem('refreshToken');
+      if (!refreshTokenValue) {
+        handleLogout();
+        setAuthReady(true);
+        return;
+      }
+
+      try {
+        const response = await refreshAuthToken({ refreshToken: refreshTokenValue });
+        const nextToken = response.data?.token;
+        if (!nextToken) {
+          throw new Error('Missing refreshed token');
+        }
+        localStorage.setItem('token', nextToken);
+        const nextSession = decodeToken(nextToken);
+        if (!cancelled) {
+          setSession(nextSession);
+          setIsLoggedIn(true);
+          setCurrentView(dashboardHomeView(nextSession?.role));
+          localStorage.setItem('currentView', dashboardHomeView(nextSession?.role));
+        }
+      } catch {
+        if (!cancelled) {
+          handleLogout();
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthReady(true);
+        }
+      }
+    };
+
+    bootstrapAuth();
+
+    return () => {
+      cancelled = true;
+    };
+    // Existing token is intentionally read once on mount for bootstrapping.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const handleOpenInvoiceDesigner = () => {
+      handleViewChange('settings/invoice-designer');
+    };
+
+    window.addEventListener('erp:open-invoice-designer', handleOpenInvoiceDesigner);
+    return () => {
+      window.removeEventListener('erp:open-invoice-designer', handleOpenInvoiceDesigner);
+    };
+  }, []);
+
+  if (!isLoggedIn) {
+    return <Auth onLogin={handleLogin} />;
+  }
+
+  if (!authReady) {
+    return <LoadingSpinner className="mt-5" label="Preparing your session..." />;
+  }
+
+  const title = isAdmin ? 'Admin workspace' : 'Shopping workspace';
 
   return (
-    <div className={`dashboard-shell dashboard-layout ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-      <aside className="dashboard-sidebar">
-        <div className="sidebar-header">
-          <button type="button" className="sidebar-brand" onClick={() => handleViewChange(isAdmin ? 'overview' : 'list')}>
-            Pearry's Dashboard
-          </button>
-        </div>
-        <nav className="sidebar-nav">
-          {navItems.map((item) => (
-            <button
-              key={item.view}
-              type="button"
-              className={`sidebar-link ${currentView === item.view ? 'active' : ''}`}
-              onClick={() => handleViewChange(item.view)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-footer">
-          <div className="sidebar-session">
-            <div className="sidebar-session-name">{session?.name || 'Signed in user'}</div>
-            <div className="sidebar-session-role">Role: {userRole || 'unknown'}</div>
-          </div>
-          <button type="button" className="btn btn-outline-light w-100" onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </aside>
-
-      <div className="dashboard-main">
-        <header className="dashboard-topbar">
-          <button
-            type="button"
-            className="sidebar-toggle topbar-toggle"
-            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            onClick={() => setSidebarOpen((prev) => !prev)}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
-          <div className="dashboard-topbar-title">
-            {isAdmin ? 'Admin workspace' : 'Shopping workspace'}
-          </div>
-          <div className="dashboard-topbar-meta">
-            {session?.name ? `${session.name} · ` : ''}Role: {userRole || 'unknown'}
-          </div>
-        </header>
-
-        <main className="dashboard-content">
-          {currentView === 'overview' ? (
-            <AdminOverview onNavigate={handleViewChange} />
-          ) : currentView === 'list' ? (
-            <ProductList
-              onEdit={handleEdit}
-              canManageProducts={canManageProducts}
-              onCartChange={refreshCartCount}
-            />
-          ) : currentView === 'form' ? (
-            <ProductForm
-              key={editingProduct?.id || 'new'}
-              product={editingProduct}
-              canManageProducts={canManageProducts}
-              onSave={handleSave}
-              onCancel={handleCancel}
-            />
-          ) : currentView === 'cart' ? (
-            <Cart onNavigate={handleViewChange} onCartChange={refreshCartCount} />
-          ) : currentView === 'orders' ? (
-            <Orders onNavigate={handleViewChange} userRole={userRole} />
-          ) : currentView === 'stock' ? (
-            <StockManager />
-          ) : currentView === 'employee-records' ? (
-            <EmployeeManager mode="records" />
-          ) : currentView === 'employee-permissions' ? (
-            <EmployeeManager mode="permissions" />
-          ) : currentView === 'employee-salary' ? (
-            <EmployeeManager mode="salary" />
-          ) : null}
-        </main>
-      </div>
-    </div>
+    <DashboardLayout
+      sidebarOpen={sidebarOpen}
+      navItems={navItems}
+      currentView={currentView}
+      session={session}
+      userRole={userRole}
+      title={title}
+      onNavigate={handleViewChange}
+      onLogout={handleLogout}
+      onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+      onHome={() => handleViewChange(dashboardHomeView(userRole))}
+    >
+      {currentView === 'overview' ? (
+        <AdminOverview onNavigate={handleViewChange} />
+      ) : currentView === 'list' ? (
+        <ProductList
+          onEdit={handleEdit}
+          canManageProducts={canManageProducts}
+          onCartChange={refreshCartCount}
+        />
+      ) : currentView === 'form' ? (
+        <ProductForm
+          key={editingProduct?.id || 'new'}
+          product={editingProduct}
+          canManageProducts={canManageProducts}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      ) : currentView === 'cart' ? (
+        <Cart onNavigate={handleViewChange} onCartChange={refreshCartCount} />
+      ) : currentView === 'orders' ? (
+        <Orders onNavigate={handleViewChange} userRole={userRole} />
+      ) : currentView === 'custom-invoice' ? (
+        <CustomInvoice />
+      ) : currentView === 'settings/invoice-designer' ? (
+        <InvoiceDesigner />
+      ) : currentView === 'stock' ? (
+        <StockManager />
+      ) : currentView === 'employees' ? (
+        <EmployeeManager mode="records" />
+      ) : currentView === 'settings' ? (
+        <SettingsCenter />
+      ) : null}
+    </DashboardLayout>
   );
 };
 

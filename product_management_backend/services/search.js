@@ -7,7 +7,7 @@ const search = async (keyword) => {
         }
 
         const result = await db.query(
-            "SELECT id,name,price,category,availability FROM products WHERE CAST(id AS TEXT) ILIKE $1 OR category ILIKE $1 OR name ILIKE $1 ORDER BY created_at DESC",
+            "SELECT id,name,sku,barcode,price,category,piece,availability FROM products WHERE CAST(id AS TEXT) ILIKE $1 OR COALESCE(sku,'') ILIKE $1 OR COALESCE(barcode,'') ILIKE $1 OR category ILIKE $1 OR name ILIKE $1 ORDER BY created_at DESC",
             [`%${keyword}%`]
         );
 

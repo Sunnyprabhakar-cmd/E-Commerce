@@ -22,8 +22,9 @@ export const hashLoginPassword = async (password) => hashPassword(password);
 
  const login_user=async(req,res)=>{
     try{
-    const{email,password}=req.body;
-     const verification=await db.query("SELECT id,name,email,password,role FROM users WHERE email=$1",[email]);
+     const{email,password}=req.body;
+     const identifier = String(email || '').trim();
+     const verification=await db.query("SELECT id,name,email,password,role FROM users WHERE email=$1 OR phone=$1",[identifier]);
     
     if(verification.rows.length === 0){
         return res.status(401).json({message:"Invalid email or password"});

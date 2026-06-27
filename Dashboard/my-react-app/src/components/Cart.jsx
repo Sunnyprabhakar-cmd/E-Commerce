@@ -1,7 +1,16 @@
 import { useState, useEffect } from 'react';
-import api from '../api/client';
 import { notify } from '../utils/notify';
 import { formatINR } from '../utils/currency';
+import {
+  addProductToCart,
+  afterOrder,
+  creditBalance,
+  deleteProductFromCart,
+  fetchAvailableBalance,
+  fetchCartInfo,
+  placeOrder,
+  updateCart as updateCartService,
+} from '../services/cartService';
 
 const Cart = ({ onNavigate, onCartChange }) => {
   const [cartItems, setCartItems] = useState([]);
@@ -23,7 +32,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
 
   const fetchWalletBalance = async () => {
     try {
-      const response = await api.get('/avlBalance');
+      const response = await fetchAvailableBalance();
       setWalletBalance(Number(response.data?.balance || 0));
     } catch {
       setWalletBalance(0);
@@ -33,7 +42,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
   const fetchCartItems = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/cartInfo');
+      const response = await fetchCartInfo();
       const data = response.data?.data;
       const items = Array.isArray(data) ? data : [];
       setCartItems(items);
@@ -55,10 +64,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
 
   const handleAddToCart = async (productId) => {
     try {
-      await api.post('/addProductInCart', {
-        product_id: productId,
-        quantity: 1
-      });
+      await addProductToCart({ product_id: productId, quantity: 1 });
       setMessage('Product added to cart!');
       onCartChange && onCartChange();
       fetchCartItems();
@@ -70,9 +76,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
 
   const handleRemoveFromCart = async (productId) => {
     try {
-      await api.post('/deleteProductFromCart', {
-        product_id: productId
-      });
+      await deleteProductFromCart({ product_id: productId });
       setMessage('Product removed from cart!');
       onCartChange && onCartChange();
       await fetchCartItems();
@@ -84,10 +88,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
 
   const handleUpdateQuantity = async (productId, operation) => {
     try {
-      await api.post('/updateCart', {
-        product_id: productId,
-        operation: operation
-      });
+      await updateCartService({ product_id: productId, operation });
       setMessage('Cart updated!');
       onCartChange && onCartChange();
       await fetchCartItems();
@@ -128,7 +129,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
 
     try {
       if (isPaid) {
-        await api.post('/afterOrder', {
+        await afterOrder({
           price: orderCost,
           type: 'debit',
           reference_type: 'order',
@@ -137,7 +138,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
         });
       }
 
-      await api.post('/placeOrder', {
+      await placeOrder({
         product_id: item.product_id,
         quantity: item.quantity,
         product_price: item.price,
@@ -147,7 +148,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
         payment_notes: isPaid ? 'Paid from wallet at order placement' : 'Deferred payment placed',
       });
 
-      await api.post('/deleteProductFromCart', { product_id: item.product_id });
+      await deleteProductFromCart({ product_id: item.product_id });
       setMessage(isPaid ? 'Order placed and paid successfully!' : 'Order placed successfully with deferred payment!');
       closeOrderDialog();
       await fetchCartItems();
@@ -155,7 +156,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
     } catch (error) {
       if (isPaid) {
         try {
-          await api.post('/balanceCredit', {
+          await creditBalance({
             price: orderCost,
             type: 'credit',
             reference_type: 'order_refund',
@@ -211,7 +212,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
 
     try {
       if (checkoutPaymentMethod === 'wallet') {
-        await api.post('/afterOrder', {
+        await afterOrder({
           price: totalOrderCost,
           type: 'debit',
           reference_type: 'order',
@@ -222,7 +223,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
 
       for (const item of cartItems) {
         const isPaid = checkoutPaymentMethod === 'wallet';
-        await api.post('/placeOrder', {
+        await placeOrder({
           product_id: item.product_id,
           quantity: item.quantity,
           product_price: item.price,
@@ -234,7 +235,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
             : 'Deferred payment placed at checkout',
           order_group_id: orderGroupId,
         });
-        await api.post('/deleteProductFromCart', { product_id: item.product_id });
+        await deleteProductFromCart({ product_id: item.product_id });
       }
 
       setMessage(
@@ -249,7 +250,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
     } catch (error) {
       if (checkoutPaymentMethod === 'wallet') {
         try {
-          await api.post('/balanceCredit', {
+          await creditBalance({
             price: totalOrderCost,
             type: 'credit',
             reference_type: 'order_refund',

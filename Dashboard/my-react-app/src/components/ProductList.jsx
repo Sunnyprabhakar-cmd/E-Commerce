@@ -1,235 +1,156 @@
-import { useState, useEffect, useCallback } from 'react';
-import api from '../api/client';
-import { notify } from '../utils/notify';
+import { useState } from 'react';
 import { formatINR } from '../utils/currency';
+import { notify } from '../utils/notify';
+import { HiOutlineArrowPath, HiOutlinePlus, HiOutlineArrowsUpDown } from 'react-icons/hi2';
+import AppCard from './common/AppCard';
+import EmptyState from './common/EmptyState';
+import FilterPanel from './common/FilterPanel';
+import LoadingSpinner from './common/LoadingSpinner';
+import PageHeader from './common/PageHeader';
+import SearchBar from './common/SearchBar';
+import useProducts from '../hooks/useProducts';
+import { addProductToCart } from '../services/productService';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
-  const [products, setProducts] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState('asc');
-  const [fromPrice, setFromPrice] = useState('');
-  const [toPrice, setToPrice] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [, setMessageState] = useState('');
-  const setMessage = (text) => {
-    setMessageState(text);
-    if (text) {
-      notify(text);
-    }
-  };
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [activeMode, setActiveMode] = useState('list');
-  const [pageSize, setPageSize] = useState(25);
-
-  const applyPageResult = (payload) => {
-    const responseData = payload?.data && !Array.isArray(payload.data) ? payload.data : payload;
-    const items = Array.isArray(responseData?.data)
-      ? responseData.data
-      : (Array.isArray(responseData) ? responseData : []);
-    setProducts(items);
-    setCurrentPage(Number(responseData?.page || 1));
-    setTotalPages(Number(responseData?.totalPages || 1));
-  };
-
-  const fetchProducts = useCallback(async (page = 1, mode = activeMode, limit = pageSize) => {
-    try {
-      setLoading(true);
-      const params = { page, limit };
-      let response;
-
-      if (mode === 'search' && searchTerm.trim()) {
-        response = await api.post(`/search?page=${page}&limit=${limit}`, { keyword: searchTerm.trim() });
-      } else if (mode === 'filter' && (fromPrice !== '' || toPrice !== '')) {
-        response = await api.post(`/filter?page=${page}&limit=${limit}`, {
-          from: fromPrice,
-          to: toPrice
-        });
-      } else if (mode === 'sort' && sortOrder) {
-        response = await api.get(`/sort/${sortOrder}`, { params });
-      } else {
-        response = await api.get('/', { params });
-      }
-
-      applyPageResult(response.data);
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeMode, fromPrice, pageSize, searchTerm, sortOrder, toPrice]);
-
-  const handleSearch = async () => {
-    if (!searchTerm.trim()) {
-      setActiveMode('list');
-      return fetchProducts(1, 'list', pageSize);
-    }
-    try {
-      setActiveMode('search');
-      const response = await api.post(`/search?page=1&limit=${pageSize}`, { keyword: searchTerm.trim() });
-      applyPageResult(response.data);
-    } catch (error) {
-      console.error('Error searching products:', error);
-    }
-  };
+  const {
+    products,
+    loading,
+    searchTerm,
+    setSearchTerm,
+    sortOrder,
+    setSortOrder,
+    fromPrice,
+    setFromPrice,
+    toPrice,
+    setToPrice,
+    currentPage,
+    totalPages,
+    activeMode,
+    pageSize,
+    setPageSize,
+    handleSearch,
+    handleFilter,
+    handleResetFilters,
+    handleSortChange,
+    refresh,
+    goToPage,
+    deleteItem,
+    loadProducts,
+  } = useProducts({ pageSize: 25, initialSortOrder: 'asc' });
+  const [showSearch, setShowSearch] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const handleDelete = async (id) => {
     if (!canManageProducts) {
-      setMessage('Only admin can delete products.');
+      notify('Only admin can delete products.');
       return;
     }
     if (!window.confirm('Are you sure you want to delete this product?')) return;
     try {
-      await api.delete('/', { data: { id } });
-      setMessage('Product deleted successfully.');
-      fetchProducts(currentPage, activeMode, pageSize);
+      await deleteItem(id);
+      notify('Product deleted successfully.');
+      refresh();
     } catch (error) {
       const apiMessage = error.response?.data?.message || error.response?.data;
-      setMessage(typeof apiMessage === 'string' ? apiMessage : 'Error deleting product');
+      notify(typeof apiMessage === 'string' ? apiMessage : 'Error deleting product');
     }
   };
 
   const handleAddToCart = async (productId) => {
     try {
-      await api.post('/addProductInCart', {
-        product_id: productId,
-        quantity: 1
-      });
-      setMessage('Product added to cart!');
+      await addProductToCart(productId, 1);
+      notify('Product added to cart!');
       onCartChange && onCartChange();
     } catch (error) {
       const apiMessage = error.response?.data?.message || 'Error adding to cart';
-      setMessage(typeof apiMessage === 'string' ? apiMessage : 'Error adding to cart');
+      notify(typeof apiMessage === 'string' ? apiMessage : 'Error adding to cart');
     }
   };
 
-  const handleFilter = async () => {
-    try {
-      setActiveMode('filter');
-      const response = await api.post(`/filter?page=1&limit=${pageSize}`, {
-        from: fromPrice,
-        to: toPrice
-      });
-      applyPageResult(response.data);
-    } catch (error) {
-      console.error('Error filtering products:', error);
-    }
-  };
-
-  const handleSortChange = async (value) => {
-    setSortOrder(value);
-
-    if (!value) {
-      setActiveMode('list');
-      return fetchProducts(1, 'list', pageSize);
-    }
-
-    setActiveMode('sort');
-    try {
-      const response = await api.get(`/sort/${value}`, { params: { page: 1, limit: pageSize } });
-      applyPageResult(response.data);
-    } catch (error) {
-      console.error('Error sorting products:', error);
-    }
-  };
-
-  const goToPage = (page) => {
-    const nextPage = Math.min(Math.max(page, 1), totalPages || 1);
-    if (nextPage === currentPage) {
-      return;
-    }
-    fetchProducts(nextPage, activeMode, pageSize);
-  };
-
-  useEffect(() => {
-    fetchProducts(1, 'sort', pageSize);
-    // Intentionally run only once on mount; subsequent reloads are user-driven.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (loading) return <div className="text-center mt-5">Loading...</div>;
+  if (loading) return <LoadingSpinner className="mt-5" />;
 
   return (
     <div className="container mt-5">
-      <h2>Product Management</h2>
-      <div className="row mb-4">
-        <div className="col-md-3">
-          <input
-            type="text"
-            className="form-control"
-            placeholder="Search by product name, category, or id"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="col-md-1">
-          <button className="btn btn-primary w-100" onClick={handleSearch}>
-            Search
+      <PageHeader
+        kicker="Products"
+        title="Product catalog"
+        description="Search, filter, sort, and manage your inventory from one table-first workspace."
+      />
+
+      <AppCard className="mt-4 product-toolbar-card" title="Controls" subtitle="Use search, filters, and sorting to narrow the product list.">
+        <div className="toolbar-actions toolbar-actions-main">
+          <button type="button" className="toolbar-button" onClick={refresh}>
+            <HiOutlineArrowPath />
+            <span>Refresh</span>
           </button>
-        </div>
-        <div className="col-md-2">
-          <input
-            type="number"
-            className="form-control"
-            placeholder="From Price"
-            value={fromPrice}
-            onChange={(e) => setFromPrice(e.target.value)}
-            min="0"
-          />
-        </div>
-        <div className="col-md-2">
-          <input
-            type="number"
-            className="form-control"
-            placeholder="To Price"
-            value={toPrice}
-            onChange={(e) => setToPrice(e.target.value)}
-            min="0"
-          />
-        </div>
-        <div className="col-md-1">
-          <button className="btn btn-secondary w-100" onClick={handleFilter}>
-            Filter
-          </button>
-        </div>
-        <div className="col-md-2">
           <button
             type="button"
-            className="btn btn-outline-primary w-100"
+            className={`toolbar-button icon-toggle ${sortOrder === 'asc' ? 'active' : ''}`}
             onClick={() => handleSortChange(sortOrder === 'asc' ? 'desc' : 'asc')}
           >
-            Sort by ID {sortOrder === 'asc' ? '↑' : '↓'}
+            <HiOutlineArrowsUpDown />
+            <span>Sort by ID {sortOrder === 'asc' ? '↑' : '↓'}</span>
           </button>
-        </div>
-        <div className="col-md-2">
-          <select
-            className="form-select"
-            value={pageSize}
-            onChange={(e) => {
-              const nextPageSize = Number(e.target.value);
-              setPageSize(nextPageSize);
-              fetchProducts(1, activeMode, nextPageSize);
-            }}
-          >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>
-                {size} per page
-              </option>
-            ))}
-          </select>
-        </div>
-        {canManageProducts && (
-          <div className="col-md-2">
-            <button className="btn btn-success w-100" onClick={() => onEdit(null)}>
-              Add Product
+          {canManageProducts && (
+            <button type="button" className="toolbar-button primary" onClick={() => onEdit(null)}>
+              <HiOutlinePlus />
+              <span>Add Product</span>
             </button>
-          </div>
-        )}
-      </div>
+          )}
+          <SearchBar
+            open={showSearch}
+            value={searchTerm}
+            placeholder="Search by product name, category, or id"
+            onToggle={() => setShowSearch((prev) => !prev)}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onSearch={handleSearch}
+          />
 
-      <div className="row">
+          <FilterPanel
+            open={showFilters}
+            onToggle={() => setShowFilters((prev) => !prev)}
+            onApply={handleFilter}
+            onReset={handleResetFilters}
+            title="Filter"
+          >
+            <input
+              type="number"
+              className="form-control toolbar-input"
+              placeholder="From Price"
+              value={fromPrice}
+              onChange={(e) => setFromPrice(e.target.value)}
+              min="0"
+            />
+            <input
+              type="number"
+              className="form-control toolbar-input"
+              placeholder="To Price"
+              value={toPrice}
+              onChange={(e) => setToPrice(e.target.value)}
+              min="0"
+            />
+            <select
+              className="form-select toolbar-input"
+              value={pageSize}
+              onChange={(e) => {
+                const nextPageSize = Number(e.target.value);
+                setPageSize(nextPageSize);
+                loadProducts(1, activeMode, nextPageSize);
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size} per page
+                </option>
+              ))}
+            </select>
+          </FilterPanel>
+        </div>
+      </AppCard>
+
+      <div className="row mt-4">
         {products.map((product) => (
           <div key={product.id} className="col-12 mb-3">
             <div className="card h-100 product-row-card">
@@ -270,6 +191,11 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
             </div>
           </div>
         ))}
+        {products.length === 0 && (
+          <div className="col-12">
+            <EmptyState title="No products found" description="Try adjusting your search or filters." />
+          </div>
+        )}
       </div>
 
       <div className="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-2">

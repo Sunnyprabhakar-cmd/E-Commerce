@@ -1,7 +1,31 @@
 import db from "../database/database.js";
 import { fetchProductById } from "../product_model/model.js";
+import { hashPassword } from "../bcrypt/bcrypt.js";
 
 let isAdminPortalSchemaReady = false;
+
+const normalizePhone = (phone = '') => String(phone || '').replace(/[^+\d]/g, '');
+
+const validateEmployeePhone = (phone = '') => {
+    const normalized = normalizePhone(phone);
+    if (!normalized || !/^\+\d{8,15}$/.test(normalized)) {
+        return { ok: false, message: 'Phone must include country code and contain 8 to 15 digits' };
+    }
+
+    if (normalized.startsWith('+91') && !/^\+91\d{10}$/.test(normalized)) {
+        return { ok: false, message: 'Indian phone numbers must be formatted as +91XXXXXXXXXX' };
+    }
+
+    return { ok: true, value: normalized };
+};
+
+const validateAadhaar = (aadhar_card = '') => {
+    const normalized = String(aadhar_card || '').replace(/\s+/g, '');
+    if (normalized && !/^\d{12}$/.test(normalized)) {
+        return { ok: false, message: 'Aadhaar must be exactly 12 numeric digits' };
+    }
+    return { ok: true, value: normalized || null };
+};
 
 const buildDateFilter = (startDate, endDate, columnName = 'created_at') => {
     const clauses = [];
@@ -44,6 +68,10 @@ export const ensureAdminPortalSchema = async () => {
                 employee_id TEXT NOT NULL,
                 created_by_user_id TEXT,
                 created_by_name TEXT,
+                temp_password_hash TEXT,
+                invite_status TEXT NOT NULL DEFAULT 'pending',
+                invite_sent_via JSONB NOT NULL DEFAULT '[]'::jsonb,
+                invite_message TEXT,
                 invite_expires_at TIMESTAMP NOT NULL,
                 used_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT NOW()
@@ -55,6 +83,7 @@ export const ensureAdminPortalSchema = async () => {
                 invite_token TEXT PRIMARY KEY,
                 created_by_user_id TEXT,
                 created_by_name TEXT,
+                invite_status TEXT NOT NULL DEFAULT 'pending',
                 invite_email TEXT,
                 invite_phone TEXT,
                 invite_expires_at TIMESTAMP NOT NULL,
@@ -98,6 +127,7 @@ export const ensureAdminPortalSchema = async () => {
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS can_manage_stock BOOLEAN NOT NULL DEFAULT FALSE");
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS can_manage_employees BOOLEAN NOT NULL DEFAULT FALSE");
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS can_manage_salary BOOLEAN NOT NULL DEFAULT FALSE");
+    await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS permissions_json JSONB NOT NULL DEFAULT '{}'::jsonb");
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS base_salary NUMERIC(12,2) NOT NULL DEFAULT 0");
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS salary_adjustment NUMERIC(12,2) NOT NULL DEFAULT 0");
     await db.query("ALTER TABLE employee_permissions ADD COLUMN IF NOT EXISTS notes TEXT");
@@ -108,11 +138,19 @@ export const ensureAdminPortalSchema = async () => {
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS aadhar_card TEXT");
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS salary NUMERIC(12,2) NOT NULL DEFAULT 0");
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS notes TEXT");
+    await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS created_by_user_id TEXT");
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS created_by_name TEXT");
     await db.query("ALTER TABLE employee_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()");
+    await db.query("ALTER TABLE employee_accounts ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'pending'");
+    await db.query("ALTER TABLE employee_accounts ADD COLUMN IF NOT EXISTS last_invite_sent_at TIMESTAMP");
+    await db.query("ALTER TABLE employee_invites ADD COLUMN IF NOT EXISTS temp_password_hash TEXT");
+    await db.query("ALTER TABLE employee_invites ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'pending'");
+    await db.query("ALTER TABLE employee_invites ADD COLUMN IF NOT EXISTS invite_sent_via JSONB NOT NULL DEFAULT '[]'::jsonb");
+    await db.query("ALTER TABLE employee_invites ADD COLUMN IF NOT EXISTS invite_message TEXT");
     await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS created_by_user_id TEXT");
     await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS created_by_name TEXT");
+    await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS invite_status TEXT NOT NULL DEFAULT 'pending'");
     await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS invite_email TEXT");
     await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS invite_phone TEXT");
     await db.query("ALTER TABLE customer_invites ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMP NOT NULL DEFAULT NOW() + INTERVAL '7 days'");
@@ -125,6 +163,7 @@ export const ensureAdminPortalSchema = async () => {
             employee_name TEXT NOT NULL,
             amount NUMERIC(12,2) NOT NULL,
             payment_note TEXT,
+            adjustment_type TEXT,
             period_start DATE,
             period_end DATE,
             recorded_by_user_id TEXT,
@@ -133,6 +172,7 @@ export const ensureAdminPortalSchema = async () => {
         )
     `);
 
+    await db.query("ALTER TABLE salary_ledger ADD COLUMN IF NOT EXISTS adjustment_type TEXT");
     await db.query("ALTER TABLE salary_ledger ADD COLUMN IF NOT EXISTS period_start DATE");
     await db.query("ALTER TABLE salary_ledger ADD COLUMN IF NOT EXISTS period_end DATE");
     await db.query("ALTER TABLE salary_ledger ADD COLUMN IF NOT EXISTS payment_note TEXT");
@@ -227,12 +267,21 @@ export const generateEmployeeInvite = async ({ employee_id, created_by_user_id, 
     }
 
     const inviteToken = crypto.randomUUID();
+    const tempPassword = crypto.randomBytes(6).toString('hex');
+    const tempPasswordHash = await hashPassword(tempPassword);
     const expiresAt = new Date(Date.now() + Number(daysValid || 7) * 24 * 60 * 60 * 1000);
     await db.query(
-        `INSERT INTO employee_invites(invite_token, employee_id, created_by_user_id, created_by_name, invite_expires_at)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (invite_token) DO UPDATE SET invite_expires_at = EXCLUDED.invite_expires_at`,
-        [inviteToken, String(employee_id), created_by_user_id || null, created_by_name || null, expiresAt]
+        `INSERT INTO employee_invites(invite_token, employee_id, created_by_user_id, created_by_name, temp_password_hash, invite_status, invite_sent_via, invite_message, invite_expires_at)
+         VALUES ($1,$2,$3,$4,$5,'pending',$6,$7,$8)
+         ON CONFLICT (invite_token) DO UPDATE SET invite_expires_at = EXCLUDED.invite_expires_at, temp_password_hash = EXCLUDED.temp_password_hash, invite_status = 'pending', invite_sent_via = EXCLUDED.invite_sent_via, invite_message = EXCLUDED.invite_message, used_at = NULL`,
+        [inviteToken, String(employee_id), created_by_user_id || null, created_by_name || null, tempPasswordHash, JSON.stringify(['copy-link']), `Employee invite for ${employee.rows[0].employee_name}`, expiresAt]
+    );
+
+    await db.query(
+        `UPDATE employee_accounts
+         SET invite_token = $2, invite_expires_at = $3, account_status = 'pending', last_invite_sent_at = NOW(), updated_at = NOW()
+         WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT)`,
+        [String(employee_id), inviteToken, expiresAt]
     );
 
     return {
@@ -243,6 +292,90 @@ export const generateEmployeeInvite = async ({ employee_id, created_by_user_id, 
             employee_name: employee.rows[0].employee_name,
             phone: employee.rows[0].phone || null,
             invite_expires_at: expiresAt,
+            invite_status: 'pending',
+            temp_password: tempPassword,
+        },
+    };
+};
+
+export const getEmployeeInviteByToken = async (inviteToken) => {
+    await ensureAdminPortalSchema();
+    if (!inviteToken) {
+        return { ok: false, message: 'Invite token is required' };
+    }
+
+    const result = await db.query(
+        `SELECT
+            i.invite_token,
+            i.employee_id,
+            i.invite_status,
+            i.invite_expires_at,
+            i.used_at,
+            i.created_at,
+            p.employee_name,
+            p.phone,
+            a.login_email,
+            a.activated_at
+         FROM employee_invites i
+         LEFT JOIN employee_profiles p ON CAST(p.employee_id AS TEXT) = CAST(i.employee_id AS TEXT)
+         LEFT JOIN employee_accounts a ON CAST(a.employee_id AS TEXT) = CAST(i.employee_id AS TEXT)
+         WHERE i.invite_token = $1
+         LIMIT 1`,
+        [inviteToken]
+    );
+
+    const invite = result.rows?.[0];
+    if (!invite) {
+        return { ok: false, message: 'Invite not found' };
+    }
+
+    const isExpired = new Date(invite.invite_expires_at).getTime() < Date.now();
+    const status = invite.used_at || invite.invite_status === 'accepted' || invite.activated_at
+        ? 'accepted'
+        : isExpired
+            ? 'expired'
+            : invite.invite_status || 'pending';
+
+    return {
+        ok: true,
+        invite: {
+            ...invite,
+            invite_status: status,
+        },
+    };
+};
+
+export const getCustomerInviteByToken = async (inviteToken) => {
+    await ensureAdminPortalSchema();
+    if (!inviteToken) {
+        return { ok: false, message: 'Invite token is required' };
+    }
+
+    const result = await db.query(
+        `SELECT invite_token, invite_email, invite_phone, invite_status, invite_expires_at, used_at, created_at
+         FROM customer_invites
+         WHERE invite_token = $1
+         LIMIT 1`,
+        [inviteToken]
+    );
+
+    const invite = result.rows?.[0];
+    if (!invite) {
+        return { ok: false, message: 'Invite not found' };
+    }
+
+    const isExpired = new Date(invite.invite_expires_at).getTime() < Date.now();
+    const status = invite.used_at || invite.invite_status === 'accepted'
+        ? 'accepted'
+        : isExpired
+            ? 'expired'
+            : invite.invite_status || 'pending';
+
+    return {
+        ok: true,
+        invite: {
+            ...invite,
+            invite_status: status,
         },
     };
 };
@@ -293,6 +426,12 @@ export const activateEmployeeInvite = async ({ invite_token, name, email, phone,
 
     await db.query('UPDATE employee_invites SET used_at = NOW() WHERE invite_token = $1', [invite_token]);
     await db.query(
+        `UPDATE employee_invites
+         SET invite_status = 'accepted'
+         WHERE invite_token = $1`,
+        [invite_token]
+    );
+    await db.query(
         `INSERT INTO employee_permissions(employee_id, employee_name, employee_email, role, updated_at)
          VALUES ($1,$2,$3,'employee',NOW())
          ON CONFLICT (employee_id) DO UPDATE SET employee_name = EXCLUDED.employee_name, employee_email = EXCLUDED.employee_email, updated_at = NOW()`,
@@ -308,9 +447,9 @@ export const generateCustomerInvite = async ({ created_by_user_id, created_by_na
     const expiresAt = new Date(Date.now() + Number(daysValid || 7) * 24 * 60 * 60 * 1000);
 
     await db.query(
-        `INSERT INTO customer_invites(invite_token, created_by_user_id, created_by_name, invite_email, invite_phone, invite_expires_at)
-         VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (invite_token) DO UPDATE SET invite_email = EXCLUDED.invite_email, invite_phone = EXCLUDED.invite_phone, invite_expires_at = EXCLUDED.invite_expires_at`,
+        `INSERT INTO customer_invites(invite_token, created_by_user_id, created_by_name, invite_status, invite_email, invite_phone, invite_expires_at)
+         VALUES ($1,$2,$3,'pending',$4,$5,$6)
+         ON CONFLICT (invite_token) DO UPDATE SET invite_email = EXCLUDED.invite_email, invite_phone = EXCLUDED.invite_phone, invite_expires_at = EXCLUDED.invite_expires_at, invite_status = 'pending'`,
         [inviteToken, created_by_user_id || null, created_by_name || null, invite_email || null, invite_phone || null, expiresAt]
     );
 
@@ -347,6 +486,7 @@ export const activateCustomerInvite = async ({ invite_token, name, email, phone,
     );
 
     await db.query('UPDATE customer_invites SET used_at = NOW() WHERE invite_token = $1', [invite_token]);
+    await db.query('UPDATE customer_invites SET invite_status = \$2 WHERE invite_token = \$1', ['__unused__', 'accepted']);
     return { ok: true, user: userInsert.rows?.[0] || null };
 };
 
@@ -435,10 +575,16 @@ export const listEmployees = async () => {
             p.aadhar_card,
             p.salary,
             p.notes,
+            COALESCE(p.is_active, TRUE) AS is_active,
             p.created_by_user_id,
             p.created_by_name,
             p.created_at,
             p.updated_at,
+            COALESCE(inv.invite_token, NULL) AS invite_token,
+            COALESCE(inv.invite_status, 'none') AS invite_status,
+            inv.invite_expires_at,
+            inv.used_at AS invite_used_at,
+            inv.created_at AS invite_created_at,
             COALESCE(ep.can_create_product, FALSE) AS can_create_product,
             COALESCE(ep.can_delete_product, FALSE) AS can_delete_product,
             COALESCE(ep.can_update_product, FALSE) AS can_update_product,
@@ -446,34 +592,61 @@ export const listEmployees = async () => {
             COALESCE(ep.can_manage_stock, FALSE) AS can_manage_stock,
             COALESCE(ep.can_manage_employees, FALSE) AS can_manage_employees,
             COALESCE(ep.can_manage_salary, FALSE) AS can_manage_salary,
+            COALESCE(ep.permissions_json, '{}'::jsonb) AS permissions_json,
             COALESCE(ep.role, 'employee') AS employee_role
         FROM employee_profiles p
         LEFT JOIN employee_permissions ep ON CAST(ep.employee_id AS TEXT) = CAST(p.employee_id AS TEXT)
+        LEFT JOIN LATERAL (
+            SELECT invite_token, invite_status, invite_expires_at, used_at, created_at
+            FROM employee_invites i
+            WHERE CAST(i.employee_id AS TEXT) = CAST(p.employee_id AS TEXT)
+            ORDER BY i.created_at DESC
+            LIMIT 1
+        ) inv ON TRUE
         ORDER BY p.employee_name ASC, CAST(p.employee_id AS TEXT) ASC
     `);
 
     return result.rows || [];
 };
 
-export const saveEmployeeProfile = async ({ employee_id, employee_name, phone, aadhar_card, salary, notes, created_by_user_id, created_by_name }) => {
+export const saveEmployeeProfile = async ({ employee_id, employee_name, phone, aadhar_card, salary, notes, is_active = true, created_by_user_id, created_by_name }) => {
     await ensureAdminPortalSchema();
     if (!employee_id || !employee_name) {
         return { ok: false, message: 'Employee id and name are required' };
     }
 
+    const phoneCheck = validateEmployeePhone(phone);
+    if (!phoneCheck.ok) {
+        return { ok: false, message: phoneCheck.message };
+    }
+
+    const aadhaarCheck = validateAadhaar(aadhar_card);
+    if (!aadhaarCheck.ok) {
+        return { ok: false, message: aadhaarCheck.message };
+    }
+
+    const duplicatePhone = await db.query(
+        `SELECT employee_id FROM employee_profiles WHERE phone = $1 AND CAST(employee_id AS TEXT) <> CAST($2 AS TEXT) LIMIT 1`,
+        [phoneCheck.value, String(employee_id)]
+    );
+    if (duplicatePhone.rows?.length > 0) {
+        return { ok: false, message: 'Phone number already exists for another employee' };
+    }
+
     const inserted = await db.query(
         `INSERT INTO employee_profiles(
-            employee_id, employee_name, phone, aadhar_card, salary, notes, created_by_user_id, created_by_name, updated_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+            employee_id, employee_name, phone, aadhar_card, salary, notes, is_active, created_by_user_id, created_by_name, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
         ON CONFLICT (employee_id) DO UPDATE SET
             employee_name = EXCLUDED.employee_name,
             phone = EXCLUDED.phone,
             aadhar_card = EXCLUDED.aadhar_card,
             salary = EXCLUDED.salary,
             notes = EXCLUDED.notes,
+            is_active = EXCLUDED.is_active,
             updated_at = NOW()
         RETURNING *`,
-        [String(employee_id), employee_name, phone || null, aadhar_card || null, Number(salary || 0), notes || null, created_by_user_id || null, created_by_name || null]
+        [String(employee_id), employee_name, phoneCheck.value, aadhaarCheck.value, Number(salary || 0), notes || null, Boolean(is_active), created_by_user_id || null, created_by_name || null]
     );
 
     return { ok: true, employee: inserted.rows?.[0] || null };
@@ -547,14 +720,24 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
     const employeeName = payload.employee_name || current.name || current.employee_name || 'Employee';
     const employeeEmail = payload.employee_email || current.email || current.employee_email || null;
     const employeeRole = payload.role || current.role || 'employee';
+    const permissionMatrix = payload.permission_matrix || payload.permissions_json || payload.permissions || {};
+    const permissionValues = (key, fallback = false) => {
+        if (Object.prototype.hasOwnProperty.call(payload, key)) {
+            return Boolean(payload[key]);
+        }
+        if (Object.prototype.hasOwnProperty.call(permissionMatrix, key)) {
+            return Boolean(permissionMatrix[key]);
+        }
+        return Boolean(fallback);
+    };
     const permissions = {
-        can_create_product: Boolean(payload.can_create_product),
-        can_delete_product: Boolean(payload.can_delete_product),
-        can_update_product: Boolean(payload.can_update_product),
-        can_apply_discount: Boolean(payload.can_apply_discount),
-        can_manage_stock: Boolean(payload.can_manage_stock),
-        can_manage_employees: Boolean(payload.can_manage_employees),
-        can_manage_salary: Boolean(payload.can_manage_salary),
+        can_create_product: permissionValues('can_create_product'),
+        can_delete_product: permissionValues('can_delete_product'),
+        can_update_product: permissionValues('can_update_product'),
+        can_apply_discount: permissionValues('can_apply_discount'),
+        can_manage_stock: permissionValues('can_manage_stock'),
+        can_manage_employees: permissionValues('can_manage_employees'),
+        can_manage_salary: permissionValues('can_manage_salary'),
     };
     const baseSalary = Number(payload.base_salary ?? 0) || 0;
     const salaryAdjustment = Number(payload.salary_adjustment ?? 0) || 0;
@@ -564,8 +747,8 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
             employee_id, employee_name, employee_email, role,
             can_create_product, can_delete_product, can_update_product,
             can_apply_discount, can_manage_stock, can_manage_employees,
-            can_manage_salary, base_salary, salary_adjustment, notes, updated_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+            can_manage_salary, permissions_json, base_salary, salary_adjustment, notes, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
         ON CONFLICT (employee_id) DO UPDATE SET
             employee_name = EXCLUDED.employee_name,
             employee_email = EXCLUDED.employee_email,
@@ -577,6 +760,7 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
             can_manage_stock = EXCLUDED.can_manage_stock,
             can_manage_employees = EXCLUDED.can_manage_employees,
             can_manage_salary = EXCLUDED.can_manage_salary,
+            permissions_json = EXCLUDED.permissions_json,
             base_salary = EXCLUDED.base_salary,
             salary_adjustment = EXCLUDED.salary_adjustment,
             notes = EXCLUDED.notes,
@@ -594,6 +778,7 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
             permissions.can_manage_stock,
             permissions.can_manage_employees,
             permissions.can_manage_salary,
+            JSON.stringify(permissionMatrix || {}),
             baseSalary,
             salaryAdjustment,
             payload.notes || null,
@@ -612,7 +797,7 @@ export const saveEmployeePermissions = async (employeeId, payload = {}) => {
     return { ok: true, employee: saved.rows?.[0] || null };
 };
 
-export const adjustEmployeeSalary = async (employeeId, amount, reason, adjustmentType, createdByUserId, createdByName) => {
+export const adjustEmployeeSalary = async (employeeId, amount, reason, adjustmentType, createdByUserId, createdByName, periodStart = null, periodEnd = null) => {
     await ensureAdminPortalSchema();
     if (!employeeId) {
         return { ok: false, message: "Employee id is required" };
@@ -641,9 +826,9 @@ export const adjustEmployeeSalary = async (employeeId, amount, reason, adjustmen
     const nextBase = Number((currentBase + delta).toFixed(2));
 
     await db.query(
-        `INSERT INTO salary_ledger(employee_id, employee_name, amount, payment_note, period_start, period_end, recorded_by_user_id, recorded_by_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [String(employeeId), employeeRecord.employee_name, delta, reason || null, null, null, createdByUserId || null, createdByName || null]
+        `INSERT INTO salary_ledger(employee_id, employee_name, amount, payment_note, adjustment_type, period_start, period_end, recorded_by_user_id, recorded_by_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [String(employeeId), employeeRecord.employee_name, delta, reason || null, adjustmentType || null, periodStart || null, periodEnd || null, createdByUserId || null, createdByName || null]
     );
 
     const updated = await db.query(
@@ -656,12 +841,13 @@ export const adjustEmployeeSalary = async (employeeId, amount, reason, adjustmen
             employee_id, employee_name, employee_email, role,
             can_create_product, can_delete_product, can_update_product,
             can_apply_discount, can_manage_stock, can_manage_employees,
-            can_manage_salary, base_salary, salary_adjustment, updated_at
-        ) VALUES ($1,$2,$3,$4,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,$5,0,NOW())
+            can_manage_salary, permissions_json, base_salary, salary_adjustment, updated_at
+        ) VALUES ($1,$2,$3,$4,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE,'{}'::jsonb,$5,0,NOW())
         ON CONFLICT (employee_id) DO UPDATE SET
             employee_name = EXCLUDED.employee_name,
             employee_email = EXCLUDED.employee_email,
             role = EXCLUDED.role,
+            permissions_json = EXCLUDED.permissions_json,
             base_salary = EXCLUDED.base_salary,
             updated_at = NOW()
         RETURNING *`,
@@ -687,6 +873,7 @@ export const getSalaryHistory = async (employeeId) => {
     await ensureAdminPortalSchema();
     const result = await db.query(
         `SELECT salary_entry_id, employee_id, employee_name, amount, payment_note, period_start, period_end, recorded_by_user_id, recorded_by_name, created_at
+                , adjustment_type
          FROM salary_ledger
          WHERE CAST(employee_id AS TEXT) = CAST($1 AS TEXT)
          ORDER BY created_at DESC, salary_entry_id DESC`,
@@ -694,4 +881,22 @@ export const getSalaryHistory = async (employeeId) => {
     );
 
     return result.rows || [];
+};
+
+export const deleteEmployeeProfile = async (employeeId) => {
+    await ensureAdminPortalSchema();
+    if (!employeeId) {
+        return { ok: false, message: 'Employee id is required' };
+    }
+
+    await db.query('DELETE FROM salary_ledger WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT)', [String(employeeId)]);
+    await db.query('DELETE FROM employee_permissions WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT)', [String(employeeId)]);
+    await db.query('DELETE FROM employee_accounts WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT)', [String(employeeId)]);
+
+    const deleted = await db.query('DELETE FROM employee_profiles WHERE CAST(employee_id AS TEXT)=CAST($1 AS TEXT) RETURNING employee_id', [String(employeeId)]);
+    if (!deleted.rows?.[0]) {
+        return { ok: false, message: 'Employee not found' };
+    }
+
+    return { ok: true, employee_id: String(employeeId) };
 };

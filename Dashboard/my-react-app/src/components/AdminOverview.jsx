@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import api from '../api/client';
 import { notify } from '../utils/notify';
 import { formatINR } from '../utils/currency';
+import {
+  HiOutlineAdjustmentsHorizontal,
+  HiOutlineArrowPath,
+  HiOutlineUsers,
+} from 'react-icons/hi2';
+import { createCustomerInvite as createCustomerInviteService, fetchAdminSummary } from '../services/adminService';
 
 const chartKeys = [
   { key: 'total_amount', label: 'Total amount' },
@@ -25,14 +30,13 @@ const AdminOverview = ({ onNavigate }) => {
   const [customerInviteLink, setCustomerInviteLink] = useState('');
   const [appliedRange, setAppliedRange] = useState({ startDate: '', endDate: '' });
   const [inviteVisible, setInviteVisible] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const fetchSummary = async ({ startDate: selectedStartDate = '', endDate: selectedEndDate = '' } = {}) => {
     try {
-      const response = await api.get('/admin/summary', {
-        params: {
-          startDate: selectedStartDate || undefined,
-          endDate: selectedEndDate || undefined,
-        },
+      const response = await fetchAdminSummary({
+        startDate: selectedStartDate || undefined,
+        endDate: selectedEndDate || undefined,
       });
       setSummary(response.data?.summary || null);
       setRecentStockEntries(Array.isArray(response.data?.recent_stock_entries) ? response.data.recent_stock_entries : []);
@@ -89,7 +93,7 @@ const AdminOverview = ({ onNavigate }) => {
 
   const createCustomerInvite = async () => {
     try {
-      const response = await api.post('/admin/customer-invites', {});
+      const response = await createCustomerInviteService({});
       const inviteToken = response.data?.invite?.invite_token || response.data?.invite_token || '';
       const inviteLink = inviteToken ? `${window.location.origin}/customer-invite/${inviteToken}` : (response.data?.invite_link || '');
       setCustomerInviteLink(inviteLink);
@@ -109,44 +113,46 @@ const AdminOverview = ({ onNavigate }) => {
 
   return (
     <div className="container mt-4">
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <div>
-          <h2 className="mb-1">Admin Overview</h2>
-          <p className="text-muted mb-0">At-a-glance order value and payment totals for {periodLabel}.</p>
-        </div>
-        <div className="d-flex gap-2 flex-wrap">
-          <button className="btn btn-outline-primary" onClick={() => fetchSummary(appliedRange)}>Refresh</button>
-          {onNavigate && <button className="btn btn-primary" onClick={() => onNavigate('stock')}>Open Stock</button>}
-          {onNavigate && <button className="btn btn-outline-dark" onClick={() => onNavigate('employee-records')}>Open Employees</button>}
-          <button className="btn btn-outline-success" onClick={createCustomerInvite}>Generate Customer Invite</button>
-        </div>
-      </div>
-
-      {customerInviteLink && inviteVisible && (
-        <div className="card border-0 shadow-sm mb-4">
-          <div className="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
-            <div className="text-break">Customer invite link: <a href={customerInviteLink} target="_blank" rel="noreferrer">{customerInviteLink}</a></div>
+      <div className="toolbar-shell mb-4">
+        <div className="toolbar-shell-top">
+          <div>
+            <div className="toolbar-kicker">Overview</div>
+            <h2 className="toolbar-title mb-0">Dashboard summary</h2>
+          </div>
+          <div className="toolbar-actions">
+            <button className="toolbar-button" onClick={() => fetchSummary(appliedRange)}>
+              <HiOutlineArrowPath />
+              <span>Refresh</span>
+            </button>
+            {onNavigate && <button className="toolbar-button" onClick={() => onNavigate('stock')}>Open Stock</button>}
+            {onNavigate && <button className="toolbar-button" onClick={() => onNavigate('employee-records')}>Open Employees</button>}
+            <button className="toolbar-button" onClick={createCustomerInvite}>
+              <HiOutlineUsers />
+              <span>Generate Customer Invite</span>
+            </button>
+            <button type="button" className={`toolbar-button icon-toggle ${showFilters ? 'active' : ''}`} onClick={() => setShowFilters((prev) => !prev)} aria-expanded={showFilters}>
+              <HiOutlineAdjustmentsHorizontal />
+              <span>Filter</span>
+            </button>
           </div>
         </div>
-      )}
 
-      <div className="card shadow-sm border-0 mb-4">
-        <div className="card-body">
-          <div className="d-flex flex-wrap align-items-end gap-2">
+        <div className={`toolbar-reveal ${showFilters ? 'open' : ''}`}>
+          <div className="toolbar-filter-panel overview-filter-panel">
             <div>
               <label className="form-label">From</label>
-              <input type="date" className="form-control" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <input type="date" className="form-control toolbar-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
             <div>
               <label className="form-label">To</label>
-              <input type="date" className="form-control" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <input type="date" className="form-control toolbar-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
-            <button className="btn btn-primary" onClick={applyCustomRange}>Apply range</button>
-            <button className="btn btn-outline-secondary" onClick={() => applyQuickRange('7d')}>Last 7 days</button>
-            <button className="btn btn-outline-secondary" onClick={() => applyQuickRange('30d')}>Last 30 days</button>
-            <button className="btn btn-outline-secondary" onClick={() => applyQuickRange('year')}>This year</button>
+            <button className="toolbar-button primary" onClick={applyCustomRange}>Apply</button>
+            <button className="toolbar-button" onClick={() => applyQuickRange('7d')}>Last 7 days</button>
+            <button className="toolbar-button" onClick={() => applyQuickRange('30d')}>Last 30 days</button>
+            <button className="toolbar-button" onClick={() => applyQuickRange('year')}>This year</button>
             <button
-              className="btn btn-link"
+              className="toolbar-button"
               onClick={() => {
                 setStartDate('');
                 setEndDate('');
@@ -158,6 +164,14 @@ const AdminOverview = ({ onNavigate }) => {
           </div>
         </div>
       </div>
+
+      {customerInviteLink && inviteVisible && (
+        <div className="card border-0 shadow-sm mb-4">
+          <div className="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <div className="text-break">Customer invite link: <a href={customerInviteLink} target="_blank" rel="noreferrer">{customerInviteLink}</a></div>
+          </div>
+        </div>
+      )}
 
       <div className="row g-3">
         <div className="col-lg-8">

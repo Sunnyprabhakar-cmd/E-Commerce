@@ -25,7 +25,10 @@ import {
     listEmployees,
     getEmployeeProfiles,
     saveEmployeeProfile,
+    deleteEmployeeProfile,
     generateEmployeeInvite,
+    getEmployeeInviteByToken,
+    getCustomerInviteByToken,
     activateEmployeeInvite,
     generateCustomerInvite,
     activateCustomerInvite,
@@ -37,12 +40,30 @@ import {
     revokeRefreshToken,
     saveRefreshToken,
 } from "../services/admin_portal.js";
+import {
+    activateInvoiceTemplate,
+    activateTheme,
+    deleteInvoiceTemplate,
+    deleteTheme,
+    listActivityLogs,
+    listInvoiceTemplates,
+    listSettings,
+    listUserSessions,
+    listUsers,
+    listThemes,
+    saveInvoiceTemplate,
+    saveTheme,
+    saveReminderSettings,
+    saveSupportSettings,
+    upsertSetting,
+    updateUserRole,
+} from "../services/system_settings.js";
 import { createAccessToken, createRefreshToken, hashRefreshToken, persistRefreshToken } from "../login&registration/login.js";
 import jwt from 'jsonwebtoken';
 //Creating Product
 export const createProduct=(req,res)=>{
     try{
-    let {id,name,price,category,piece,availability}=req.body;
+    let {id,name,price,category,piece,availability,sku,barcode}=req.body;
     if(!name){
         return res.status(400).json({
             message:"invalid name",
@@ -63,7 +84,7 @@ export const createProduct=(req,res)=>{
         })
     }
     const persist = async () => {
-        const product = await addProduct(id,name,price,category,piece,availability);
+        const product = await addProduct(id,name,price,category,piece,availability,sku,barcode);
         return res.status(201).json(product);
     };
     return persist().catch((err)=>res.status(400).json({message:"some error occured",error:err.message}));
@@ -570,6 +591,7 @@ export const employeeProfileUpsert = async (req, res) => {
             aadhar_card: req.body.aadhar_card || req.body.adharcard,
             salary: req.body.salary,
             notes: req.body.notes,
+            is_active: req.body.is_active ?? req.body.active ?? true,
             created_by_user_id: req.user.id || req.user.email,
             created_by_name: req.user.name || req.user.username || null,
         });
@@ -594,11 +616,34 @@ export const employeeInviteCreate = async (req, res) => {
             return res.status(400).json(result);
         }
         const baseUrl = process.env.PUBLIC_APP_URL || 'http://localhost:5173';
+        const inviteLink = `${baseUrl}/employee-invite/${result.invite.invite_token}`;
+        const shareText = encodeURIComponent(
+            `You are invited to activate your ERP employee account. Use this link to set your password: ${inviteLink}`
+        );
         return res.status(200).json({
             message: 'invite created',
             invite: result.invite,
-            invite_link: `${baseUrl}/employee-invite/${result.invite.invite_token}`,
+            invite_link: inviteLink,
+            invite_status: result.invite.invite_status,
+            temp_password: result.invite.temp_password,
+            share_links: {
+                copy: inviteLink,
+                email: `mailto:${req.body.email || ''}?subject=${encodeURIComponent('ERP Employee Invitation')}&body=${shareText}`,
+                whatsapp: `https://wa.me/${String(req.body.phone || '').replace(/[^\d]/g, '')}?text=${shareText}`,
+            },
         });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeDelete = async (req, res) => {
+    try {
+        const result = await deleteEmployeeProfile(req.params.id || req.body.employee_id);
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'employee deleted', employee_id: result.employee_id });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
     }
@@ -634,7 +679,32 @@ export const employeeInviteActivate = async (req, res) => {
             ...result,
             token: accessToken,
             refreshToken,
+            invite_status: 'accepted',
         });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const employeeInviteInspect = async (req, res) => {
+    try {
+        const result = await getEmployeeInviteByToken(req.params.token);
+        if (!result.ok) {
+            return res.status(404).json(result);
+        }
+        return res.status(200).json({ message: 'invite fetched', invite: result.invite });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const customerInviteInspect = async (req, res) => {
+    try {
+        const result = await getCustomerInviteByToken(req.params.token);
+        if (!result.ok) {
+            return res.status(404).json(result);
+        }
+        return res.status(200).json({ message: 'invite fetched', invite: result.invite });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
     }
@@ -676,6 +746,197 @@ export const customerInviteActivate = async (req, res) => {
             return res.status(400).json(result);
         }
         return res.status(200).json({ message: 'customer account created', ...result });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const systemSettingsList = async (req, res) => {
+    try {
+        const settings = await listSettings();
+        return res.status(200).json({ message: 'settings fetched', settings });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const systemSettingsSave = async (req, res) => {
+    try {
+        const result = await upsertSetting({
+            setting_key: req.params.key || req.body.setting_key,
+            setting_scope: req.body.setting_scope || 'global',
+            setting_value: req.body.setting_value || req.body.value || {},
+            updated_by_user_id: req.user.id || req.user.email,
+            updated_by_name: req.user.name || req.user.username || null,
+        });
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'setting saved', setting: result.setting });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const themeList = async (_req, res) => {
+    try {
+        const themes = await listThemes();
+        return res.status(200).json({ message: 'themes fetched', themes });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const themeSave = async (req, res) => {
+    try {
+        const result = await saveTheme({
+            theme_id: req.body.theme_id || null,
+            theme_key: req.params.key || req.body.theme_key,
+            theme_name: req.body.theme_name,
+            theme_value: req.body.theme_value || req.body.value || {},
+            is_active: req.body.is_active ?? false,
+            created_by_user_id: req.user.id || req.user.email,
+            created_by_name: req.user.name || req.user.username || null,
+        });
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'theme saved', theme: result.theme });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const themeActivate = async (req, res) => {
+    try {
+        const result = await activateTheme(req.params.key || req.body.theme_key);
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'theme activated', theme: result.theme });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const themeDelete = async (req, res) => {
+    try {
+        const result = await deleteTheme(req.params.key || req.body.theme_key);
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'theme deleted', theme_key: result.theme_key });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const invoiceTemplateList = async (_req, res) => {
+    try {
+        const templates = await listInvoiceTemplates();
+        return res.status(200).json({ message: 'templates fetched', templates });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const invoiceTemplateSave = async (req, res) => {
+    try {
+        const result = await saveInvoiceTemplate({
+            template_id: req.body.template_id || null,
+            template_key: req.params.key || req.body.template_key,
+            template_name: req.body.template_name,
+            template_category: req.body.template_category || 'custom',
+            template_value: req.body.template_value || req.body.value || {},
+            is_default: req.body.is_default ?? false,
+            created_by_user_id: req.user.id || req.user.email,
+            created_by_name: req.user.name || req.user.username || null,
+        });
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'template saved', template: result.template });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const invoiceTemplateActivate = async (req, res) => {
+    try {
+        const result = await activateInvoiceTemplate(req.params.key || req.body.template_key);
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'template activated', template: result.template });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const invoiceTemplateDelete = async (req, res) => {
+    try {
+        const result = await deleteInvoiceTemplate(req.params.key || req.body.template_key);
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'template deleted', template_key: result.template_key });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const userList = async (_req, res) => {
+    try {
+        const users = await listUsers();
+        return res.status(200).json({ message: 'users fetched', users });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const userRoleUpdate = async (req, res) => {
+    try {
+        const result = await updateUserRole(req.params.id, req.body.role);
+        if (!result.ok) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json({ message: 'user role updated', user: result.user });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const userSessionList = async (req, res) => {
+    try {
+        const sessions = await listUserSessions(req.params.id || null);
+        return res.status(200).json({ message: 'sessions fetched', sessions });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const activityLogList = async (req, res) => {
+    try {
+        const logs = await listActivityLogs(req.query.limit);
+        return res.status(200).json({ message: 'activity logs fetched', logs });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const reminderSettingsSave = async (req, res) => {
+    try {
+        const result = await saveReminderSettings(req.body, req.user || {});
+        return res.status(200).json({ message: 'reminders saved', ...result });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const supportSettingsSave = async (req, res) => {
+    try {
+        const result = await saveSupportSettings(req.body, req.user || {});
+        return res.status(200).json({ message: 'support settings saved', ...result });
     } catch (err) {
         return res.status(400).json({ message: 'some error occured', error: err.message });
     }
@@ -742,7 +1003,9 @@ export const employeeSalaryAdjust = async (req, res) => {
             req.body.reason,
             req.body.adjustment_type,
             req.user.id || req.user.email,
-            req.user.name || req.user.username || null
+            req.user.name || req.user.username || null,
+            req.body.period_start || req.body.effective_date || null,
+            req.body.period_end || null
         );
         if (!result.ok) {
             return res.status(400).json(result);
