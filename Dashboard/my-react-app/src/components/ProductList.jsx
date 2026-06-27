@@ -8,7 +8,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState('');
+  const [sortOrder, setSortOrder] = useState('asc');
   const [fromPrice, setFromPrice] = useState('');
   const [toPrice, setToPrice] = useState('');
   const [loading, setLoading] = useState(true);
@@ -144,7 +144,7 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
   };
 
   useEffect(() => {
-    fetchProducts(1, 'list', pageSize);
+    fetchProducts(1, 'sort', pageSize);
     // Intentionally run only once on mount; subsequent reloads are user-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -195,15 +195,13 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
           </button>
         </div>
         <div className="col-md-2">
-          <select
-            className="form-select"
-            value={sortOrder}
-            onChange={(e) => handleSortChange(e.target.value)}
+          <button
+            type="button"
+            className="btn btn-outline-primary w-100"
+            onClick={() => handleSortChange(sortOrder === 'asc' ? 'desc' : 'asc')}
           >
-            <option value="">Sort by Price</option>
-            <option value="asc">Low to High</option>
-            <option value="desc">High to Low</option>
-          </select>
+            Sort by ID {sortOrder === 'asc' ? '↑' : '↓'}
+          </button>
         </div>
         <div className="col-md-2">
           <select

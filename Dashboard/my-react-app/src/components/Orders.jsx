@@ -1,9 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
 import api from '../api/client';
 import invoiceLogoSrc from '../assets/logo.png';
 import { notify } from '../utils/notify';
+import { formatINR } from '../utils/currency';
 
 const companyProfile = {
   name: 'PEARRYS FOOD PRODUCTS',
@@ -137,18 +139,16 @@ const downloadPdfFromHtml = async (html, fileName) => {
     }
 
     const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
-    await pdf.html(target, {
-      x: 0,
-      y: 0,
-      width: 210,
+    const canvas = await html2canvas(target, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
       windowWidth: 1240,
-      autoPaging: 'text',
-      html2canvas: {
-        scale: 1.8,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-      },
     });
+    const imgData = canvas.toDataURL('image/png');
+    const pageWidth = 210;
+    const pageHeight = (canvas.height * pageWidth) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, pageWidth, pageHeight);
     pdf.save(fileName);
   } finally {
     iframe.remove();
@@ -314,9 +314,9 @@ const renderInvoiceHtml = ({
       <tr>
         <td class="item-name">${escapeHtml(item.productName)}</td>
         <td class="qty-cell">${escapeHtml(item.quantityLabel || `${item.quantity || 0} PCS`)}</td>
-        <td class="rate-cell">${formatMoney(item.unitPrice)}</td>
-        <td class="disc-cell">${formatMoney(item.discountAmount)}<span>${escapeHtml(item.discountPercentageText || '')}</span></td>
-        <td class="amount-cell">${formatMoney(item.payableAmount)}</td>
+        <td class="rate-cell">${formatINR(item.unitPrice)}</td>
+        <td class="disc-cell">${formatINR(item.discountAmount)}<span>${escapeHtml(item.discountPercentageText || '')}</span></td>
+        <td class="amount-cell">${formatINR(item.payableAmount)}</td>
       </tr>
   `).join('');
 
@@ -643,9 +643,9 @@ const renderInvoiceHtml = ({
         </div>
         <div class="lower-right">
           <div class="amount-line"><span>Total Amount</span><strong>₹ ${formatMoney(payableTotal)}</strong></div>
-          <div class="amount-line"><span>Received Amount</span><strong>₹ ${formatMoney(amountPaid)}</strong></div>
-          <div class="amount-line"><span>Previous Balance</span><strong>₹ ${formatMoney(Math.max(payableTotal - remainingAmount, 0))}</strong></div>
-          <div class="amount-line"><span>Current Balance</span><strong>₹ ${formatMoney(remainingAmount)}</strong></div>
+          <div class="amount-line"><span>Received Amount</span><strong>${escapeHtml(formatINR(amountPaid))}</strong></div>
+          <div class="amount-line"><span>Previous Balance</span><strong>${escapeHtml(formatINR(Math.max(payableTotal - remainingAmount, 0)))}</strong></div>
+          <div class="amount-line"><span>Current Balance</span><strong>${escapeHtml(formatINR(remainingAmount))}</strong></div>
           <div class="words-block">
             <div class="words-title">Total Amount (in words)</div>
             <div class="words-value">${escapeHtml(amountInWords(payableTotal))}</div>
@@ -798,6 +798,16 @@ const Orders = ({ onNavigate, userRole }) => {
   const [paymentInputs, setPaymentInputs] = useState({});
   const [actionSelections, setActionSelections] = useState({});
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [showCustomInvoice, setShowCustomInvoice] = useState(false);
+  const [customInvoice, setCustomInvoice] = useState({
+    customerName: '',
+    invoiceTitle: 'Custom Invoice',
+    details: '',
+    amount: '',
+    paymentMode: 'cash',
+    reference: '',
+    notes: '',
+  });
 
   const adminView = userRole === 'admin';
   const fetchEndpoint = adminView ? '/orders' : '/orderDetail';
@@ -1400,6 +1410,133 @@ const Orders = ({ onNavigate, userRole }) => {
         <div className="alert alert-warning">You are viewing cancelled orders only.</div>
       )}
 
+      {adminView && (
+        <div className="card shadow-sm border-0 mb-4">
+          <div className="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              <h3 className="h5 mb-1">Custom invoice</h3>
+              <p className="text-muted mb-0">Create a one-off invoice with a manual name, details, and amount.</p>
+            </div>
+            <button className="btn btn-outline-primary" type="button" onClick={() => setShowCustomInvoice((prev) => !prev)}>
+              {showCustomInvoice ? 'Hide custom invoice' : 'Create custom invoice'}
+            </button>
+          </div>
+          {showCustomInvoice && (
+            <div className="card-body border-top">
+              <div className="row g-3">
+                <div className="col-md-4">
+                  <label className="form-label">Customer name</label>
+                  <input className="form-control" value={customInvoice.customerName} onChange={(e) => setCustomInvoice((prev) => ({ ...prev, customerName: e.target.value }))} placeholder="Enter customer name" />
+                </div>
+                <div className="col-md-4">
+                  <label className="form-label">Invoice title</label>
+                  <input className="form-control" value={customInvoice.invoiceTitle} onChange={(e) => setCustomInvoice((prev) => ({ ...prev, invoiceTitle: e.target.value }))} placeholder="Custom Invoice" />
+                </div>
+                <div className="col-md-4">
+                  <label className="form-label">Amount</label>
+                  <input className="form-control" type="number" min="0" step="0.01" value={customInvoice.amount} onChange={(e) => setCustomInvoice((prev) => ({ ...prev, amount: e.target.value }))} placeholder="0.00" />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label">Invoice details</label>
+                  <textarea className="form-control" rows="3" value={customInvoice.details} onChange={(e) => setCustomInvoice((prev) => ({ ...prev, details: e.target.value }))} placeholder="Write the invoice description or note" />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label">Additional notes</label>
+                  <textarea className="form-control" rows="3" value={customInvoice.notes} onChange={(e) => setCustomInvoice((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Optional notes" />
+                </div>
+                <div className="col-md-4">
+                  <label className="form-label">Payment mode</label>
+                  <select className="form-select" value={customInvoice.paymentMode} onChange={(e) => setCustomInvoice((prev) => ({ ...prev, paymentMode: e.target.value }))}>
+                    <option value="cash">Cash</option>
+                    <option value="wallet">Wallet</option>
+                    <option value="upi">UPI</option>
+                    <option value="card">Card</option>
+                  </select>
+                </div>
+                <div className="col-md-4">
+                  <label className="form-label">Reference</label>
+                  <input className="form-control" value={customInvoice.reference} onChange={(e) => setCustomInvoice((prev) => ({ ...prev, reference: e.target.value }))} placeholder="Invoice reference" />
+                </div>
+                <div className="col-md-4 d-flex align-items-end gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      const amount = Number(customInvoice.amount || 0);
+                      if (!customInvoice.customerName.trim() || !amount || amount <= 0) {
+                        setMessage('Enter customer name and a valid amount');
+                        return;
+                      }
+                      const customOrder = {
+                        invoice_number: `CUSTOM-${Date.now()}`,
+                        customer_name: customInvoice.customerName.trim(),
+                        customer_email: '',
+                        user_id: customInvoice.reference || 'CUSTOM',
+                        total_cost: amount,
+                        payable_amount: amount,
+                        amount_paid: amount,
+                        remaining_amount: 0,
+                        payment_mode: customInvoice.paymentMode,
+                        payment_notes: customInvoice.notes || customInvoice.details || 'Custom invoice',
+                        status: 'paid',
+                        product_name: customInvoice.invoiceTitle || 'Custom Invoice',
+                        product_id: 'CUSTOM',
+                        quantity: 1,
+                        product_price: amount,
+                        discount_amount: 0,
+                        discount_percentage: 0,
+                        created_at: new Date().toISOString(),
+                      };
+                      const assets = await buildInvoiceAssets(customOrder, false);
+                      const html = createInvoiceMarkup({ ...customOrder, payment_notes: customInvoice.notes || customInvoice.details }, assets.qrCodeDataUrl, false);
+                      await openPreviewWindow(html, `Invoice ${customOrder.invoice_number}`);
+                    }}
+                  >
+                    Preview
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-success"
+                    onClick={async () => {
+                      const amount = Number(customInvoice.amount || 0);
+                      if (!customInvoice.customerName.trim() || !amount || amount <= 0) {
+                        setMessage('Enter customer name and a valid amount');
+                        return;
+                      }
+                      const customOrder = {
+                        invoice_number: `CUSTOM-${Date.now()}`,
+                        customer_name: customInvoice.customerName.trim(),
+                        customer_email: '',
+                        user_id: customInvoice.reference || 'CUSTOM',
+                        total_cost: amount,
+                        payable_amount: amount,
+                        amount_paid: amount,
+                        remaining_amount: 0,
+                        payment_mode: customInvoice.paymentMode,
+                        payment_notes: customInvoice.notes || customInvoice.details || 'Custom invoice',
+                        status: 'paid',
+                        product_name: customInvoice.invoiceTitle || 'Custom Invoice',
+                        product_id: 'CUSTOM',
+                        quantity: 1,
+                        product_price: amount,
+                        discount_amount: 0,
+                        discount_percentage: 0,
+                        created_at: new Date().toISOString(),
+                      };
+                      const assets = await buildInvoiceAssets(customOrder, false);
+                      const html = createInvoiceMarkup({ ...customOrder, payment_notes: customInvoice.notes || customInvoice.details }, assets.qrCodeDataUrl, false);
+                      await downloadPdfFromHtml(html, assets.fileName);
+                    }}
+                  >
+                    Download PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {filteredOrders.length === 0 ? (
         <div className="alert alert-warning">No orders found</div>
       ) : (
@@ -1455,13 +1592,13 @@ const Orders = ({ onNavigate, userRole }) => {
                       <td>—</td>
                       <td>{group.totalQuantity}</td>
                       <td>—</td>
-                      <td>${group.originalCost.toFixed(2)}</td>
+                      <td>{formatINR(group.originalCost)}</td>
                       {adminView && <td>—</td>}
-                      {adminView && <td>${group.totalCost.toFixed(2)}</td>}
+                      {adminView && <td>{formatINR(group.totalCost)}</td>}
                       <td>{groupStatus}</td>
                       {adminView && <td>{group.paymentStatus}</td>}
-                      {adminView && <td>${group.totalPaid.toFixed(2)}</td>}
-                      {adminView && <td>${group.totalRemaining.toFixed(2)}</td>}
+                      {adminView && <td>{formatINR(group.totalPaid)}</td>}
+                      {adminView && <td>{formatINR(group.totalRemaining)}</td>}
                       {adminView && <td>{group.paymentMode}</td>}
                       {adminView && <td>{group.lastActionBy}</td>}
                       <td>
@@ -1552,16 +1689,16 @@ const Orders = ({ onNavigate, userRole }) => {
                           <td>{getOrderProductLabel(order)}</td>
                           <td>{order.product_id}</td>
                           <td>{order.quantity}</td>
-                          <td>${Number(order.product_price || 0).toFixed(2)}</td>
+                          <td>{formatINR(Number(order.product_price || 0))}</td>
                           {adminView && <td>{Number(order.discount_amount || 0).toFixed(2)} ({Number(order.discount_percentage || 0).toFixed(0)}%)</td>}
-                          {adminView && <td>${Number(order.payable_amount ?? (order.total_cost || 0)).toFixed(2)}</td>}
-                          <td>${Number(order.total_cost || 0).toFixed(2)}</td>
+                          {adminView && <td>{formatINR(Number(order.payable_amount ?? (order.total_cost || 0)))}</td>}
+                          <td>{formatINR(Number(order.total_cost || 0))}</td>
                           <td>{order.status || 'N/A'}</td>
                           {adminView && <td>{orderPaymentStatus}</td>}
-                          {adminView && <td>${displayPaid.toFixed(2)}</td>}
-                          {adminView && <td>${displayRemaining.toFixed(2)}</td>}
-                          {adminView && <td>{order.payment_mode || (displayRemaining > 0 ? 'unpaid' : 'N/A')}</td>}
-                              {adminView && <td>{order.last_action_by_user_name || order.last_action_by_user_phone || order.last_action_by_user_id || 'N/A'}</td>}
+                            {adminView && <td>{formatINR(displayPaid)}</td>}
+                            {adminView && <td>{formatINR(displayRemaining)}</td>}
+                            {adminView && <td>{order.payment_mode || (displayRemaining > 0 ? 'unpaid' : 'N/A')}</td>}
+                            {adminView && <td>{order.last_action_by_user_name || order.last_action_by_user_phone || order.last_action_by_user_id || 'N/A'}</td>}
                           {adminView && (
                             <td>
                               <div className="d-flex flex-column gap-2">

@@ -71,7 +71,7 @@ export const addProduct = async (id,name, price, category,piece ,availability) =
 
 export const fetchAllProduct = async () => {
     await ensureProductSchema();
-    const products = await db.query("SELECT id,name,price,category,piece,availability FROM products ORDER BY created_at DESC");
+    const products = await db.query("SELECT id,name,price,category,piece,availability FROM products ORDER BY CASE WHEN id ~ '^[0-9]+$' THEN id::int END ASC NULLS LAST, id ASC");
     return products.rows;
 };
 

@@ -207,16 +207,34 @@ export const update = (req, res) => {
         });
     }
 };
-//Sorting product based on price
+// Sorting products based on product id
 export const sort_by_price=(req,res)=>{
     try{
     const run = async () => {
         const temp=await fetchAllProduct();
         const sortOrder = req.params.id; 
         if(sortOrder === 'asc'){
-            temp.sort((a,b)=>Number(a.price) - Number(b.price));
+            temp.sort((a,b)=>{
+                const left = Number.parseInt(a.id, 10);
+                const right = Number.parseInt(b.id, 10);
+                const leftNumeric = Number.isNaN(left) ? Number.MAX_SAFE_INTEGER : left;
+                const rightNumeric = Number.isNaN(right) ? Number.MAX_SAFE_INTEGER : right;
+                if (leftNumeric !== rightNumeric) {
+                    return leftNumeric - rightNumeric;
+                }
+                return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
+            });
         } else if(sortOrder === 'desc'){
-            temp.sort((a,b)=>Number(b.price) - Number(a.price));
+            temp.sort((a,b)=>{
+                const left = Number.parseInt(a.id, 10);
+                const right = Number.parseInt(b.id, 10);
+                const leftNumeric = Number.isNaN(left) ? -1 : left;
+                const rightNumeric = Number.isNaN(right) ? -1 : right;
+                if (leftNumeric !== rightNumeric) {
+                    return rightNumeric - leftNumeric;
+                }
+                return String(b.id).localeCompare(String(a.id), undefined, { numeric: true, sensitivity: 'base' });
+            });
         }
         const page=Number(req.query.page)||1;
         const limit=Number(req.query.limit)||10;
