@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
+import { notify } from '../utils/notify';
 
 const money = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -42,10 +43,12 @@ const EmployeeManager = ({ mode = 'records' }) => {
   const [salaryEndDate, setSalaryEndDate] = useState('');
   const [salaryEntry, setSalaryEntry] = useState(emptySalaryEntry);
   const [inviteLink, setInviteLink] = useState('');
-  const [message, setMessage] = useState('');
-
-  const notify = (text, type = 'info') => {
-    window.dispatchEvent(new CustomEvent('app:notify', { detail: { message: text, type } }));
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
   };
 
   const selectedEmployee = useMemo(
@@ -307,7 +310,7 @@ const EmployeeManager = ({ mode = 'records' }) => {
               <button className="btn btn-primary" onClick={handleEmployeeSave}>Save Employee</button>
             </div>
             {inviteLink && (
-              <div className="alert alert-success mt-3 mb-0">
+              <div className="mt-3 p-3 rounded border border-success-subtle bg-success-subtle">
                 Invite link: <a href={inviteLink} target="_blank" rel="noreferrer">{inviteLink}</a>
               </div>
             )}
@@ -492,8 +495,6 @@ const EmployeeManager = ({ mode = 'records' }) => {
         </div>
         <button className="btn btn-outline-primary" onClick={fetchEmployees}>Refresh</button>
       </div>
-
-      {message && <div className="alert alert-info">{message}</div>}
 
       {mode === 'records' ? renderRecordsView() : mode === 'permissions' ? renderPermissionsView() : renderSalaryView()}
     </div>

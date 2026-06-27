@@ -31,11 +31,23 @@ const Dashboard = () => {
   });
   const [editingProduct, setEditingProduct] = useState(null);
   const [cartCount, setCartCount] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const canManageProducts = userRole === 'admin' || permissions.can_create_product || permissions.can_update_product || permissions.can_delete_product;
   const canManageStock = userRole === 'admin' || permissions.can_manage_stock;
   const canManageEmployees = userRole === 'admin' || permissions.can_manage_employees;
   const isAdmin = userRole === 'admin';
+
+  const navItems = [
+    isAdmin ? { view: 'overview', label: 'Overview' } : null,
+    { view: 'list', label: 'Products' },
+    !isAdmin ? { view: 'cart', label: `Cart${cartCount > 0 ? ` (${cartCount})` : ''}` } : null,
+    { view: 'orders', label: 'Orders' },
+    isAdmin ? { view: 'stock', label: 'Stock' } : null,
+    isAdmin ? { view: 'employee-records', label: 'Employees' } : null,
+    isAdmin ? { view: 'employee-permissions', label: 'Permissions' } : null,
+    isAdmin ? { view: 'employee-salary', label: 'Salary' } : null,
+  ].filter(Boolean);
 
   const handleViewChange = (view) => {
     setCurrentView(view);
@@ -117,140 +129,98 @@ const Dashboard = () => {
   }, [isAdmin, isLoggedIn]);
 
   return (
-    <div className="dashboard-shell">
-      <nav className="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
-        <div className="container-fluid">
-          <button className="navbar-brand btn btn-link text-white text-decoration-none" type="button" onClick={() => handleViewChange(isAdmin ? 'overview' : 'list')}>
+    <div className={`dashboard-shell dashboard-layout ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+      <aside className="dashboard-sidebar">
+        <div className="sidebar-header">
+          <button
+            type="button"
+            className="sidebar-toggle"
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={() => setSidebarOpen((prev) => !prev)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+          <button type="button" className="sidebar-brand" onClick={() => handleViewChange(isAdmin ? 'overview' : 'list')}>
             Pearry's Dashboard
           </button>
-          <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-            <span className="navbar-toggler-icon"></span>
-          </button>
-          <div className="collapse navbar-collapse" id="navbarNav">
-            <ul className="navbar-nav ms-auto">
-              {isAdmin && (
-                <li className="nav-item">
-                  <button
-                    className={`btn nav-link ${currentView === 'overview' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('overview')}
-                  >
-                    Overview
-                  </button>
-                </li>
-              )}
-              <li className="nav-item">
-                <button
-                  className={`btn nav-link ${currentView === 'list' ? 'active' : ''}`}
-                  onClick={() => handleViewChange('list')}
-                >
-                  Products
-                </button>
-              </li>
-              {!isAdmin && (
-                <li className="nav-item">
-                  <button
-                    className={`btn nav-link ${currentView === 'cart' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('cart')}
-                  >
-                    Cart{cartCount > 0 ? ` (${cartCount})` : ''}
-                  </button>
-                </li>
-              )}
-              <li className="nav-item">
-                <button
-                  className={`btn nav-link ${currentView === 'orders' ? 'active' : ''}`}
-                  onClick={() => handleViewChange('orders')}
-                >
-                  Orders
-                </button>
-              </li>
-              {isAdmin && (
-                <li className="nav-item">
-                  <button
-                    className={`btn nav-link ${currentView === 'stock' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('stock')}
-                  >
-                    Stock
-                  </button>
-                </li>
-              )}
-              {isAdmin && (
-                <li className="nav-item">
-                  <button
-                    className={`btn nav-link ${currentView === 'employee-records' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('employee-records')}
-                  >
-                    Employees
-                  </button>
-                </li>
-              )}
-              {isAdmin && (
-                <li className="nav-item">
-                  <button
-                    className={`btn nav-link ${currentView === 'employee-permissions' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('employee-permissions')}
-                  >
-                    Permissions
-                  </button>
-                </li>
-              )}
-              {isAdmin && (
-                <li className="nav-item">
-                  <button
-                    className={`btn nav-link ${currentView === 'employee-salary' ? 'active' : ''}`}
-                    onClick={() => handleViewChange('employee-salary')}
-                  >
-                    Salary
-                  </button>
-                </li>
-              )}
-              <li className="nav-item">
-                <span className="navbar-text text-light me-3">
-                  {session?.name ? `${session.name} · ` : ''}Role: {userRole || 'unknown'}
-                </span>
-              </li>
-              <li className="nav-item">
-                <button
-                  className="btn btn-outline-light"
-                  onClick={handleLogout}
-                >
-                  Logout
-                </button>
-              </li>
-            </ul>
-          </div>
         </div>
-      </nav>
+        <nav className="sidebar-nav">
+          {navItems.map((item) => (
+            <button
+              key={item.view}
+              type="button"
+              className={`sidebar-link ${currentView === item.view ? 'active' : ''}`}
+              onClick={() => handleViewChange(item.view)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <div className="sidebar-session">
+            <div className="sidebar-session-name">{session?.name || 'Signed in user'}</div>
+            <div className="sidebar-session-role">Role: {userRole || 'unknown'}</div>
+          </div>
+          <button type="button" className="btn btn-outline-light w-100" onClick={handleLogout}>
+            Logout
+          </button>
+        </div>
+      </aside>
 
-      {currentView === 'overview' ? (
-        <AdminOverview onNavigate={handleViewChange} />
-      ) : currentView === 'list' ? (
-        <ProductList
-          onEdit={handleEdit}
-          canManageProducts={canManageProducts}
-          onCartChange={refreshCartCount}
-        />
-      ) : currentView === 'form' ? (
-        <ProductForm
-          key={editingProduct?.id || 'new'}
-          product={editingProduct}
-          canManageProducts={canManageProducts}
-          onSave={handleSave}
-          onCancel={handleCancel}
-        />
-      ) : currentView === 'cart' ? (
-        <Cart onNavigate={handleViewChange} onCartChange={refreshCartCount} />
-      ) : currentView === 'orders' ? (
-        <Orders onNavigate={handleViewChange} userRole={userRole} />
-      ) : currentView === 'stock' ? (
-        <StockManager />
-      ) : currentView === 'employee-records' ? (
-        <EmployeeManager mode="records" />
-      ) : currentView === 'employee-permissions' ? (
-        <EmployeeManager mode="permissions" />
-      ) : currentView === 'employee-salary' ? (
-        <EmployeeManager mode="salary" />
-      ) : null}
+      <div className="dashboard-main">
+        <header className="dashboard-topbar">
+          <button
+            type="button"
+            className="sidebar-toggle topbar-toggle"
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            onClick={() => setSidebarOpen((prev) => !prev)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+          <div className="dashboard-topbar-title">
+            {isAdmin ? 'Admin workspace' : 'Shopping workspace'}
+          </div>
+          <div className="dashboard-topbar-meta">
+            {session?.name ? `${session.name} · ` : ''}Role: {userRole || 'unknown'}
+          </div>
+        </header>
+
+        <main className="dashboard-content">
+          {currentView === 'overview' ? (
+            <AdminOverview onNavigate={handleViewChange} />
+          ) : currentView === 'list' ? (
+            <ProductList
+              onEdit={handleEdit}
+              canManageProducts={canManageProducts}
+              onCartChange={refreshCartCount}
+            />
+          ) : currentView === 'form' ? (
+            <ProductForm
+              key={editingProduct?.id || 'new'}
+              product={editingProduct}
+              canManageProducts={canManageProducts}
+              onSave={handleSave}
+              onCancel={handleCancel}
+            />
+          ) : currentView === 'cart' ? (
+            <Cart onNavigate={handleViewChange} onCartChange={refreshCartCount} />
+          ) : currentView === 'orders' ? (
+            <Orders onNavigate={handleViewChange} userRole={userRole} />
+          ) : currentView === 'stock' ? (
+            <StockManager />
+          ) : currentView === 'employee-records' ? (
+            <EmployeeManager mode="records" />
+          ) : currentView === 'employee-permissions' ? (
+            <EmployeeManager mode="permissions" />
+          ) : currentView === 'employee-salary' ? (
+            <EmployeeManager mode="salary" />
+          ) : null}
+        </main>
+      </div>
     </div>
   );
 };

@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
 import api from '../api/client';
+import { notify } from '../utils/notify';
+import { formatINR } from '../utils/currency';
 
 const Wallet = ({ onNavigate }) => {
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState('');
-  const [message, setMessage] = useState('');
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
+  };
 
   const fetchBalance = async () => {
     try {
@@ -62,12 +70,10 @@ const Wallet = ({ onNavigate }) => {
       </div>
 
       <h2>My Wallet</h2>
-      {message && <div className="alert alert-info">{message}</div>}
-
       <div className="card mt-3">
         <div className="card-body">
           <h5 className="card-title">Available Balance</h5>
-          <h3 className="text-success">${balance.toFixed(2)}</h3>
+          <h3 className="text-success">{formatINR(balance)}</h3>
 
           <div className="mt-4 d-flex gap-2">
             <input

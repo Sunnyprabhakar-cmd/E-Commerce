@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api/client';
+import { notify } from '../utils/notify';
+import { formatINR } from '../utils/currency';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -10,7 +12,13 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
   const [fromPrice, setFromPrice] = useState('');
   const [toPrice, setToPrice] = useState('');
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
+  };
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [activeMode, setActiveMode] = useState('list');
@@ -146,8 +154,6 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
   return (
     <div className="container mt-5">
       <h2>Product Management</h2>
-      {message && <div className="alert alert-info">{message}</div>}
-
       <div className="row mb-4">
         <div className="col-md-3">
           <input
@@ -241,7 +247,7 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
                   <div className="product-meta">
                     <span>Category: {product.category}</span>
                     <span>Piece: {product.piece}</span>
-                    <span>Price: ₹{product.price}</span>
+                    <span>Price: {formatINR(product.price)}</span>
                     <span>Available: {product.availability ? 'Yes' : 'No'}</span>
                   </div>
                 </div>

@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import api from '../api/client';
 import invoiceLogoSrc from '../assets/logo.png';
+import { notify } from '../utils/notify';
 
 const companyProfile = {
   name: 'PEARRYS FOOD PRODUCTS',
@@ -27,9 +28,9 @@ const overdueBankDetails = {
   upiId: import.meta.env.VITE_PERRYS_OVERDUE_UPI_ID || bankDetails.upiId,
 };
 
-const moneyFormatter = new Intl.NumberFormat('en-US', {
+const moneyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
-  currency: 'USD',
+  currency: 'INR',
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
@@ -232,12 +233,12 @@ const integerToWords = (value) => {
 
 const amountInWords = (value) => {
   const { whole, fraction } = splitAmount(value);
-  const dollarWord = whole === 1 ? 'Dollar' : 'Dollars';
-  const centWord = fraction === 1 ? 'Cent' : 'Cents';
+  const rupeeWord = whole === 1 ? 'Rupee' : 'Rupees';
+  const paiseWord = fraction === 1 ? 'Paisa' : 'Paise';
   if (fraction > 0) {
-    return `${integerToWords(whole)} ${dollarWord} and ${convertHundredsToWords(fraction)} ${centWord} only`;
+    return `${integerToWords(whole)} ${rupeeWord} and ${convertHundredsToWords(fraction)} ${paiseWord} only`;
   }
-  return `${integerToWords(whole)} ${dollarWord} only`;
+  return `${integerToWords(whole)} ${rupeeWord} only`;
 };
 
 const buildInvoicePdfFilename = (customerName, invoiceNumber) => `${sanitizeFilePart(customerName)}_${sanitizeFilePart(invoiceNumber)}.pdf`;
@@ -337,7 +338,7 @@ const renderInvoiceHtml = ({
     }
     @page {
       size: A4;
-      margin: 0;
+      margin: 4mm;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -547,14 +548,36 @@ const renderInvoiceHtml = ({
       html, body {
         background: #fff;
       }
+      @page {
+        size: A4 portrait;
+        margin: 3mm;
+      }
       .invoice-shell {
         box-shadow: none;
         margin: 0;
         width: 210mm;
-        min-height: 297mm;
+        min-height: auto;
+        padding: 0;
       }
       .no-print {
         display: none !important;
+      }
+      .sheet {
+        min-height: auto;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+      .topline,
+      .brand-row,
+      .invoice-strip,
+      .billto,
+      .customer-name,
+      thead th,
+      tbody td,
+      .summary-row,
+      .lower-grid,
+      .signature {
+        font-size: 90%;
       }
     }
   </style>
@@ -759,7 +782,13 @@ const buildInvoiceAssets = async (order, isGroup = false) => {
 const Orders = ({ onNavigate, userRole }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
+  };
   const [statusFilter, setStatusFilter] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('');
   const [sortField, setSortField] = useState('order_id');
@@ -1367,8 +1396,6 @@ const Orders = ({ onNavigate, userRole }) => {
       </div>
 
       <h2>{adminView ? 'All Orders' : 'My Orders'}</h2>
-      {message && <div className="alert alert-info">{message}</div>}
-
       {adminView && orderScope === 'cancelled' && (
         <div className="alert alert-warning">You are viewing cancelled orders only.</div>
       )}

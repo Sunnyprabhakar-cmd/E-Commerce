@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
+import { notify } from '../utils/notify';
 
 const StockManager = () => {
   const [products, setProducts] = useState([]);
@@ -8,7 +9,13 @@ const StockManager = () => {
   const [selectedProductId, setSelectedProductId] = useState('');
   const [units, setUnits] = useState('');
   const [notes, setNotes] = useState('');
-  const [message, setMessage] = useState('');
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -78,7 +85,6 @@ const StockManager = () => {
             <div className="card-body">
               <h3 className="card-title mb-2">Daily Stock Upload</h3>
               <p className="text-muted">Search a product, enter the units made, and save a dated stock record.</p>
-              {message && <div className="alert alert-info">{message}</div>}
               <input
                 type="search"
                 className="form-control mb-3"

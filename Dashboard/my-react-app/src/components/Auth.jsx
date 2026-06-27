@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { notify } from '../utils/notify';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://e-commerce-4nit.onrender.com';
 
@@ -11,10 +12,12 @@ const Auth = ({ onLogin }) => {
     phone: '',
     password: ''
   });
-  const [message, setMessage] = useState('');
-
-  const notify = (text, type = 'info') => {
-    window.dispatchEvent(new CustomEvent('app:notify', { detail: { message: text, type } }));
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
   };
 
   const handleChange = (e) => {
@@ -31,7 +34,6 @@ const Auth = ({ onLogin }) => {
 
       const response = await axios.post(`${API_BASE}${endpoint}`, payload);
       setMessage(response.data.message || 'Success');
-      notify(response.data.message || 'Success', 'success');
 
       if (isLogin && response.data.token) {
         localStorage.setItem('token', response.data.token);
@@ -46,7 +48,6 @@ const Auth = ({ onLogin }) => {
     } catch (error) {
       const apiMessage = error.response?.data?.message;
       setMessage(apiMessage || 'Error occurred');
-      notify(apiMessage || 'Error occurred', 'danger');
     }
   };
 
@@ -122,7 +123,6 @@ const Auth = ({ onLogin }) => {
               >
                 {isLogin ? 'Need to register?' : 'Already have an account?'}
               </button>
-              {message && <div className="alert alert-info mt-3">{message}</div>}
             </div>
           </div>
         </div>

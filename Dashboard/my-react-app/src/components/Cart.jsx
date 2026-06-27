@@ -1,10 +1,18 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
+import { notify } from '../utils/notify';
+import { formatINR } from '../utils/currency';
 
 const Cart = ({ onNavigate, onCartChange }) => {
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
+  };
   const [walletBalance, setWalletBalance] = useState(0);
   const [selectedOrderItem, setSelectedOrderItem] = useState(null);
   const [isOrderModalOpen, setOrderModalOpen] = useState(false);
@@ -279,8 +287,6 @@ const Cart = ({ onNavigate, onCartChange }) => {
         </button>
       </div>
       <h2>Shopping Cart</h2>
-      {message && <div className="alert alert-info">{message}</div>}
-
       {cartItems.length === 0 ? (
         <div className="alert alert-warning">Your cart is empty</div>
       ) : (
@@ -302,7 +308,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
                   <tr key={item.product_id}>
                     <td>{item.product_name || `Product ${item.product_id}`}</td>
                     <td>{item.category || 'N/A'}</td>
-                    <td>${item.price || '0.00'}</td>
+                    <td>{formatINR(item.price)}</td>
                     <td>
                       <div className="input-group" style={{ width: '100px' }}>
                         <button
@@ -325,7 +331,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
                         </button>
                       </div>
                     </td>
-                    <td>${(item.price * item.quantity).toFixed(2)}</td>
+                    <td>{formatINR(item.price * item.quantity)}</td>
                     <td>
                       <button
                         className="btn btn-sm btn-danger"
@@ -352,7 +358,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
                 <div className="card-body">
                   <h5 className="card-title">Cart Summary</h5>
                   <h4 className="text-success">
-                    Total: ${totalPrice.toFixed(2)}
+                    Total: {formatINR(totalPrice)}
                   </h4>
                   <button className="btn btn-primary w-100 mt-3" onClick={handleCheckout}>
                     Proceed to Checkout
@@ -374,7 +380,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
                       You are placing an order for <strong>{selectedOrderItem.product_name || selectedOrderItem.product_id}</strong>.
                     </p>
                     <p>Quantity: {selectedOrderItem.quantity}</p>
-                    <p>Amount: ${Number(selectedOrderItem.price || 0).toFixed(2)} x {selectedOrderItem.quantity} = ${(Number(selectedOrderItem.price || 0) * Number(selectedOrderItem.quantity || 0)).toFixed(2)}</p>
+                    <p>Amount: {formatINR(Number(selectedOrderItem.price || 0))} x {selectedOrderItem.quantity} = {formatINR(Number(selectedOrderItem.price || 0) * Number(selectedOrderItem.quantity || 0))}</p>
                     {modalError && <div className="alert alert-danger">{modalError}</div>}
                   </div>
                   <div className="modal-footer">
@@ -402,7 +408,7 @@ const Cart = ({ onNavigate, onCartChange }) => {
                     <button type="button" className="btn-close" onClick={closeCheckoutDialog}></button>
                   </div>
                   <div className="modal-body">
-                    <p>Total order amount: <strong>${totalPrice.toFixed(2)}</strong></p>
+                    <p>Total order amount: <strong>{formatINR(totalPrice)}</strong></p>
                     <div className="mb-3">
                       <label className="form-label">Payment option</label>
                       <select

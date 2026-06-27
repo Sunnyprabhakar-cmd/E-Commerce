@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
+import { notify } from '../utils/notify';
 
 const money = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -13,7 +14,13 @@ const AdminOverview = ({ onNavigate }) => {
   const [recentStockEntries, setRecentStockEntries] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [message, setMessage] = useState('');
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
+  };
   const [customerInviteLink, setCustomerInviteLink] = useState('');
   const [appliedRange, setAppliedRange] = useState({ startDate: '', endDate: '' });
 
@@ -118,8 +125,10 @@ const AdminOverview = ({ onNavigate }) => {
       </div>
 
       {customerInviteLink && (
-        <div className="alert alert-success d-flex justify-content-between align-items-center gap-2">
-          <div className="text-break">Customer invite link: <a href={customerInviteLink} target="_blank" rel="noreferrer">{customerInviteLink}</a></div>
+        <div className="card border-0 shadow-sm mb-4">
+          <div className="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
+            <div className="text-break">Customer invite link: <a href={customerInviteLink} target="_blank" rel="noreferrer">{customerInviteLink}</a></div>
+          </div>
         </div>
       )}
 
@@ -151,8 +160,6 @@ const AdminOverview = ({ onNavigate }) => {
           </div>
         </div>
       </div>
-
-      {message && <div className="alert alert-info">{message}</div>}
 
       <div className="row g-3">
         <div className="col-md-3">

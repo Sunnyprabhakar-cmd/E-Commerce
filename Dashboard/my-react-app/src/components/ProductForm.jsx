@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import api from '../api/client';
+import { notify } from '../utils/notify';
 
 const getInitialFormData = (product) => ({
   id: product?.id || '',
@@ -12,7 +13,13 @@ const getInitialFormData = (product) => ({
 
 const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
   const [formData, setFormData] = useState(() => getInitialFormData(product));
-  const [message, setMessage] = useState('');
+  const [, setMessageState] = useState('');
+  const setMessage = (text) => {
+    setMessageState(text);
+    if (text) {
+      notify(text);
+    }
+  };
 
   const handleChange = (e) => {
   const { name, value, type, checked } = e.target;
@@ -134,7 +141,6 @@ const ProductForm = ({ product, onSave, onCancel, canManageProducts }) => {
                   Cancel
                 </button>
               </form>
-              {message && <div className="alert alert-info mt-3">{message}</div>}
             </div>
           </div>
         </div>
