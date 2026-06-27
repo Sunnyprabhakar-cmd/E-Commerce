@@ -154,19 +154,19 @@ const downloadPdfFromHtml = async (html, fileName) => {
   }
 };
 
-const openPreviewWindow = async (html, title) => {
-  const previewWindow = window.open('', '_blank', 'noopener,noreferrer,width=1280,height=1600');
-  if (!previewWindow) {
+const openPreviewWindow = async (html, title, previewWindow = null) => {
+  const targetWindow = previewWindow || window.open('', '_blank', 'width=1280,height=1600');
+  if (!targetWindow) {
     throw new Error('Unable to open invoice window. Check popup settings.');
   }
 
-  previewWindow.document.open();
-  previewWindow.document.write(html);
-  previewWindow.document.close();
-  previewWindow.document.title = title;
+  targetWindow.document.open();
+  targetWindow.document.write(html);
+  targetWindow.document.close();
+  targetWindow.document.title = title;
 
   await new Promise((resolve) => setTimeout(resolve, 300));
-  return previewWindow;
+  return targetWindow;
 };
 
 const splitAmount = (value) => {
@@ -965,11 +965,18 @@ const Orders = ({ onNavigate, userRole }) => {
   };
 
   const handleGenerateGroupInvoice = async (group) => {
+    const previewWindow = window.open('', '_blank', 'width=1280,height=1600');
+    if (!previewWindow) {
+      setMessage('Unable to open invoice window. Check popup settings.');
+      return;
+    }
+    previewWindow.document.write('<!doctype html><html><head><title>Loading invoice...</title><style>body{font-family:Arial,sans-serif;padding:24px;text-align:center;}</style></head><body>Preparing invoice...</body></html>');
     try {
       const assets = await buildInvoiceAssets(group, true);
       const html = createGroupInvoiceMarkup(group, assets.qrCodeDataUrl, true);
-      await openPreviewWindow(html, getInvoiceTitle(group));
+      await openPreviewWindow(html, getInvoiceTitle(group), previewWindow);
     } catch (error) {
+      previewWindow.close();
       setMessage(error.message || 'Unable to open invoice window. Check popup settings.');
     }
   };
@@ -1028,11 +1035,18 @@ const Orders = ({ onNavigate, userRole }) => {
   };
 
   const handleGenerateInvoice = async (order) => {
+    const previewWindow = window.open('', '_blank', 'width=1280,height=1600');
+    if (!previewWindow) {
+      setMessage('Unable to open invoice window. Check popup settings.');
+      return;
+    }
+    previewWindow.document.write('<!doctype html><html><head><title>Loading invoice...</title><style>body{font-family:Arial,sans-serif;padding:24px;text-align:center;}</style></head><body>Preparing invoice...</body></html>');
     try {
       const assets = await buildInvoiceAssets(order, false);
       const html = createInvoiceMarkup(order, assets.qrCodeDataUrl, true);
-      await openPreviewWindow(html, getInvoiceTitle(order));
+      await openPreviewWindow(html, getInvoiceTitle(order), previewWindow);
     } catch (error) {
+      previewWindow.close();
       setMessage(error.message || 'Unable to open invoice window. Check popup settings.');
     }
   };
