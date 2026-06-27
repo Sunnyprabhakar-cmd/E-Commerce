@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 import { notify } from '../utils/notify';
+import { formatINR } from '../utils/currency';
 
-const money = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 2,
-});
+const chartKeys = [
+  { key: 'total_amount', label: 'Total amount' },
+  { key: 'total_paid_amount', label: 'Paid amount' },
+  { key: 'total_generated_after_discount', label: 'After discount' },
+  { key: 'total_discount_amount', label: 'Discount' },
+];
 
 const AdminOverview = ({ onNavigate }) => {
   const [summary, setSummary] = useState(null);
-  const [recentProducts, setRecentProducts] = useState([]);
   const [recentStockEntries, setRecentStockEntries] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -23,10 +24,7 @@ const AdminOverview = ({ onNavigate }) => {
   };
   const [customerInviteLink, setCustomerInviteLink] = useState('');
   const [appliedRange, setAppliedRange] = useState({ startDate: '', endDate: '' });
-
-  const notify = (text, type = 'info') => {
-    window.dispatchEvent(new CustomEvent('app:notify', { detail: { message: text, type } }));
-  };
+  const [inviteVisible, setInviteVisible] = useState(false);
 
   const fetchSummary = async ({ startDate: selectedStartDate = '', endDate: selectedEndDate = '' } = {}) => {
     try {
@@ -37,13 +35,11 @@ const AdminOverview = ({ onNavigate }) => {
         },
       });
       setSummary(response.data?.summary || null);
-      setRecentProducts(Array.isArray(response.data?.recent_products) ? response.data.recent_products : []);
       setRecentStockEntries(Array.isArray(response.data?.recent_stock_entries) ? response.data.recent_stock_entries : []);
       setAppliedRange({ startDate: selectedStartDate, endDate: selectedEndDate });
     } catch (error) {
       setMessage(error.response?.data?.message || 'Failed to load dashboard summary');
       setSummary(null);
-      setRecentProducts([]);
       setRecentStockEntries([]);
     }
   };
@@ -94,13 +90,15 @@ const AdminOverview = ({ onNavigate }) => {
   const createCustomerInvite = async () => {
     try {
       const response = await api.post('/admin/customer-invites', {});
-      const inviteLink = response.data?.invite_link || '';
+      const inviteToken = response.data?.invite?.invite_token || response.data?.invite_token || '';
+      const inviteLink = inviteToken ? `${window.location.origin}/customer-invite/${inviteToken}` : (response.data?.invite_link || '');
       setCustomerInviteLink(inviteLink);
-      notify('Customer invite link generated', 'success');
+      setInviteVisible(true);
+      window.setTimeout(() => setInviteVisible(false), 10000);
+      setMessage('Customer invite link generated');
     } catch (error) {
       const errorMessage = error.response?.data?.message || 'Failed to generate customer invite link';
       setMessage(errorMessage);
-      notify(errorMessage, 'danger');
     }
   };
 
@@ -124,7 +122,7 @@ const AdminOverview = ({ onNavigate }) => {
         </div>
       </div>
 
-      {customerInviteLink && (
+      {customerInviteLink && inviteVisible && (
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-body d-flex justify-content-between align-items-center gap-2 flex-wrap">
             <div className="text-break">Customer invite link: <a href={customerInviteLink} target="_blank" rel="noreferrer">{customerInviteLink}</a></div>
@@ -162,101 +160,55 @@ const AdminOverview = ({ onNavigate }) => {
       </div>
 
       <div className="row g-3">
-        <div className="col-md-3">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body">
-              <div className="text-muted small">Total Amount</div>
-              <div className="fs-3 fw-semibold">{money.format(totalAmount)}</div>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body">
-              <div className="text-muted small">Total Paid Amount</div>
-              <div className="fs-3 fw-semibold text-success">{money.format(totalPaidAmount)}</div>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body">
-              <div className="text-muted small">Total Money Generated After Discount</div>
-              <div className="fs-3 fw-semibold text-primary">{money.format(totalGeneratedAfterDiscount)}</div>
-            </div>
-          </div>
-        </div>
-        <div className="col-md-3">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body">
-              <div className="text-muted small">Total Discount Given</div>
-              <div className="fs-3 fw-semibold text-warning">{money.format(totalDiscountAmount)}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="row g-3 mt-2">
-        <div className="col-lg-6">
+        <div className="col-lg-8">
           <div className="card shadow-sm h-100">
             <div className="card-body">
-              <h3 className="h5 mb-3">Recently added products</h3>
-              <div className="table-responsive">
-                <table className="table table-sm align-middle mb-0">
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th>Category</th>
-                      <th>Stock</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentProducts.map((product) => (
-                      <tr key={product.id}>
-                        <td>{product.name}</td>
-                        <td>{product.category}</td>
-                        <td>{Number(product.piece || 0)}</td>
-                      </tr>
-                    ))}
-                    {recentProducts.length === 0 && (
-                      <tr>
-                        <td colSpan="3" className="text-center text-muted py-4">No recent products found</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <h3 className="h5 mb-0">Performance graph</h3>
+                <div className="text-muted small">Revenue and collection snapshot</div>
+              </div>
+              <div className="performance-graph">
+                {chartKeys.map((item) => {
+                  const value = Number(summary?.[item.key] || 0);
+                  const maxValue = Math.max(totalAmount, totalPaidAmount, totalGeneratedAfterDiscount, totalDiscountAmount, 1);
+                  const height = Math.max((value / maxValue) * 100, value > 0 ? 8 : 0);
+                  return (
+                    <div key={item.key} className="performance-bar-item">
+                      <div className="performance-bar-label">{item.label}</div>
+                      <div className="performance-bar-track">
+                        <div className="performance-bar-fill" style={{ height: `${height}%` }} />
+                      </div>
+                      <div className="performance-bar-value">{formatINR(value)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="d-flex flex-wrap gap-3 mt-4">
+                <div className="mini-stat"><span>Orders</span><strong>{Number(summary?.order_count || 0)}</strong></div>
+                <div className="mini-stat"><span>Total amount</span><strong>{formatINR(totalAmount)}</strong></div>
+                <div className="mini-stat"><span>Paid amount</span><strong>{formatINR(totalPaidAmount)}</strong></div>
               </div>
             </div>
           </div>
         </div>
-        <div className="col-lg-6">
+        <div className="col-lg-4">
           <div className="card shadow-sm h-100">
             <div className="card-body">
-              <h3 className="h5 mb-3">Recent stock entries</h3>
-              <div className="table-responsive">
-                <table className="table table-sm align-middle mb-0">
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th>Units</th>
-                      <th>Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentStockEntries.map((entry) => (
-                      <tr key={entry.stock_entry_id}>
-                        <td>{entry.product_name}</td>
-                        <td>{Number(entry.units || 0)}</td>
-                        <td>{entry.recorded_at ? new Date(entry.recorded_at).toLocaleString() : 'N/A'}</td>
-                      </tr>
-                    ))}
-                    {recentStockEntries.length === 0 && (
-                      <tr>
-                        <td colSpan="3" className="text-center text-muted py-4">No stock entries yet</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              <h3 className="h5 mb-3">Recent stock numbers</h3>
+              <div className="stock-number-grid">
+                {recentStockEntries.slice(0, 6).map((entry) => (
+                  <div key={entry.stock_entry_id} className="stock-number-pill">
+                    <div className="stock-number-title">{entry.product_name || 'Stock'}</div>
+                    <strong>{Number(entry.units || 0)}</strong>
+                  </div>
+                ))}
+                {recentStockEntries.length === 0 && (
+                  <div className="text-muted">No stock entries yet</div>
+                )}
+              </div>
+              <div className="mt-4 p-3 rounded-4 bg-light border">
+                <div className="text-muted small">Recent stock count</div>
+                <div className="fs-3 fw-semibold">{recentStockEntries.length}</div>
               </div>
             </div>
           </div>

@@ -143,6 +143,7 @@ export const ensureAdminPortalSchema = async () => {
 export const getAdminSummary = async ({ startDate = null, endDate = null } = {}) => {
     await ensureAdminPortalSchema();
     const { clauses, params } = buildDateFilter(startDate, endDate, 'created_at');
+    clauses.push("COALESCE(status, '') <> 'cancelled'");
     const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
     const result = await db.query(
         `SELECT

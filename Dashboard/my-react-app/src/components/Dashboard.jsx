@@ -132,16 +132,6 @@ const Dashboard = () => {
     <div className={`dashboard-shell dashboard-layout ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
       <aside className="dashboard-sidebar">
         <div className="sidebar-header">
-          <button
-            type="button"
-            className="sidebar-toggle"
-            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-            onClick={() => setSidebarOpen((prev) => !prev)}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
           <button type="button" className="sidebar-brand" onClick={() => handleViewChange(isAdmin ? 'overview' : 'list')}>
             Pearry's Dashboard
           </button>
