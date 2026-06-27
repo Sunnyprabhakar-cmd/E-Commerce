@@ -2,6 +2,8 @@ import db from "../database/database.js";
 
 let isOrderSchemaReady = false;
 
+const buildInvoiceNumber = (orderId) => `PI-${String(orderId).padStart(6, '0')}`;
+
 const ensureOrderSchema = async () => {
     if (isOrderSchemaReady) {
         return;
@@ -13,12 +15,16 @@ const ensureOrderSchema = async () => {
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_mode TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_reference TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_notes TEXT");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_due_at TIMESTAMP");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_group_id TEXT");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_number TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_paid NUMERIC DEFAULT 0");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS remaining_amount NUMERIC DEFAULT 0");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC DEFAULT 0");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC DEFAULT 0");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payable_amount NUMERIC DEFAULT 0");
+    await db.query("CREATE UNIQUE INDEX IF NOT EXISTS orders_invoice_number_unique_idx ON orders(invoice_number)");
+    await db.query("UPDATE orders SET invoice_number = 'PI-' || LPAD(order_id::text, 6, '0') WHERE invoice_number IS NULL OR invoice_number = ''");
     await db.query(`
         CREATE TABLE IF NOT EXISTS order_actions (
             action_id SERIAL PRIMARY KEY,
@@ -68,7 +74,8 @@ export const placeOrder = async (
     is_paid = true,
     payment_mode = null,
     payment_reference = null,
-    payment_notes = null
+    payment_notes = null,
+    payment_due_at = null
 ) => {
     try {
         if (!product_id || !user_id || !quantity || !product_price) {
@@ -96,11 +103,16 @@ export const placeOrder = async (
 
         try {
             const created = await db.query(
-                "INSERT INTO orders(product_id,user_id,order_group_id,quantity,product_price,total_cost,discount_percentage,discount_amount,payable_amount,is_paid,status,payment_mode,payment_reference,payment_notes,amount_paid,remaining_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING order_id",
-                [pid, user_id, order_group_id, qty, unitPrice, total_cost, discount_percentage, discount_amount, payable_amount, is_paid, status, final_payment_mode, final_payment_reference, final_payment_notes, amount_paid, remaining_amount]
+                "INSERT INTO orders(product_id,user_id,order_group_id,quantity,product_price,total_cost,discount_percentage,discount_amount,payable_amount,is_paid,status,payment_mode,payment_reference,payment_notes,payment_due_at,amount_paid,remaining_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING order_id",
+                [pid, user_id, order_group_id, qty, unitPrice, total_cost, discount_percentage, discount_amount, payable_amount, is_paid, status, final_payment_mode, final_payment_reference, final_payment_notes, payment_due_at, amount_paid, remaining_amount]
             );
             const orderId = created.rows?.[0]?.order_id ?? null;
             if (orderId) {
+                const invoiceNumber = buildInvoiceNumber(orderId);
+                await db.query(
+                    "UPDATE orders SET invoice_number=$1 WHERE order_id=$2",
+                    [invoiceNumber, orderId]
+                );
                 await recordOrderAction(
                     orderId,
                     user_id,
@@ -115,6 +127,7 @@ export const placeOrder = async (
             return {
                 message: "your order is placed",
                 tracking_id: orderId,
+                invoice_number: buildInvoiceNumber(orderId),
                 order: {
                     product_id: pid,
                     user_id,
@@ -128,6 +141,7 @@ export const placeOrder = async (
                     payment_mode: final_payment_mode,
                     payment_reference: final_payment_reference,
                     payment_notes: final_payment_notes,
+                    payment_due_at,
                 },
             };
         } catch (err) {

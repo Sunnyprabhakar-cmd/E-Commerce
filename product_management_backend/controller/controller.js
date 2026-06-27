@@ -286,6 +286,7 @@ export const addToOrders=async(req,res)=>{
         const payment_mode = req.body.payment_mode || null;
         const payment_reference = req.body.payment_reference || null;
         const payment_notes = req.body.payment_notes || null;
+        const payment_due_at = req.body.payment_due_at || null;
         const order_group_id = req.body.order_group_id || null;
         let orderItem = await placeOrder(
             req.body.product_id,
@@ -296,7 +297,8 @@ export const addToOrders=async(req,res)=>{
             is_paid,
             payment_mode,
             payment_reference,
-            payment_notes
+            payment_notes,
+            payment_due_at
         );
         return res.status(200).json(orderItem);
     }catch(err){
