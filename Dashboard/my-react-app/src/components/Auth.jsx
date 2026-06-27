@@ -1,145 +1,118 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineArrowRight,
-  HiOutlineBanknotes,
-  HiOutlineBellAlert,
-  HiOutlineBuildingOffice2,
-  HiOutlineChartBar,
-  HiOutlineChartBarSquare,
-  HiOutlineClipboardDocumentList,
-  HiOutlineCreditCard,
-  HiOutlineCubeTransparent,
-  HiOutlineDocumentText,
+  HiOutlineCheckCircle,
   HiOutlineEnvelope,
   HiOutlineEye,
   HiOutlineEyeSlash,
-  HiOutlineFingerPrint,
   HiOutlineGlobeAlt,
   HiOutlineLockClosed,
+  HiOutlineMapPin,
   HiOutlinePhone,
-  HiOutlineQrCode,
-  HiOutlineReceiptPercent,
-  HiOutlineShieldCheck,
-  HiOutlineSquaresPlus,
-  HiOutlineTruck,
+  HiOutlineSparkles,
   HiOutlineUser,
-  HiOutlineUserCircle,
-  HiOutlineUsers,
-  HiOutlineClock,
+  HiOutlineWifi,
 } from 'react-icons/hi2';
 import { login, register } from '../services/authService';
 import { notify } from '../utils/notify';
 
-const platformBadges = ['Finance', 'Inventory', 'Sales', 'Purchase', 'GST', 'Warehouse', 'CRM', 'Payroll', 'Analytics', 'Barcode', 'QR Invoice'];
-
-const previewStats = [
-  { label: 'Revenue', value: '₹48.2L', meta: '+12.4% MoM', icon: HiOutlineBanknotes, tone: 'blue' },
-  { label: 'Orders', value: '128', meta: '18 pending', icon: HiOutlineClipboardDocumentList, tone: 'indigo' },
-  { label: 'Inventory', value: '5,283 Items', meta: '412 low stock', icon: HiOutlineCubeTransparent, tone: 'cyan' },
-  { label: 'Warehouse', value: '4 Active', meta: '2 dispatch ready', icon: HiOutlineBuildingOffice2, tone: 'emerald' },
-  { label: 'Purchase Orders', value: '18', meta: '7 awaiting approval', icon: HiOutlineTruck, tone: 'amber' },
-  { label: 'Customer Payments', value: '₹3.1L', meta: '4 pending', icon: HiOutlineCreditCard, tone: 'violet' },
-  { label: 'Employee Attendance', value: '36 Online', meta: '2 late check-ins', icon: HiOutlineUsers, tone: 'rose' },
-  { label: 'Production', value: 'Running', meta: '3 line tasks active', icon: HiOutlineClock, tone: 'sky' },
-  { label: 'Profit', value: '₹12.8L', meta: '+9.2% margin', icon: HiOutlineChartBar, tone: 'green' },
-  { label: 'Cash Flow', value: '₹8.4L', meta: 'Projected 21 days', icon: HiOutlineChartBarSquare, tone: 'teal' },
-  { label: 'Pending Payments', value: '₹3.1L', meta: '14 due', icon: HiOutlineBellAlert, tone: 'orange' },
-  { label: 'Stock Alerts', value: '12', meta: '3 critical', icon: HiOutlineSquaresPlus, tone: 'red' },
-];
-
-const monthlyRevenue = [54, 58, 61, 63, 69, 72, 77, 80, 83, 88, 92, 98];
-const weeklySales = [42, 51, 47, 66, 74, 79, 88];
-const inventoryTrend = [86, 80, 75, 78, 70, 66, 61, 58];
-
-const recentInvoices = [
-  { id: 'INV-2048', client: 'Kohli Textiles', status: 'Paid', amount: '₹48,200' },
-  { id: 'INV-2051', client: 'Northstar Traders', status: 'Due Today', amount: '₹1.3L' },
-  { id: 'INV-2054', client: 'Silverline Retail', status: 'Partial', amount: '₹82,750' },
-  { id: 'INV-2058', client: 'Prime Foods', status: 'Sent', amount: '₹64,900' },
-];
-
-const recentActivity = [
-  { label: 'Invoice #INV-2048 approved', meta: 'Accounts • 3 min ago', badge: 'Approved' },
-  { label: 'Purchase order #PO-882 received', meta: 'Warehouse • 12 min ago', badge: 'Received' },
-  { label: 'Salary batch scheduled', meta: 'HR • Today 4:00 PM', badge: 'Queued' },
-  { label: 'Customer reminder sent', meta: 'CRM • 1 hour ago', badge: 'Sent' },
-];
-
-const topProducts = [
-  { name: 'Premium paper', volume: '1,240 units', share: '24%', tone: 'blue' },
-  { name: 'Barcode labels', volume: '980 units', share: '19%', tone: 'violet' },
-  { name: 'Industrial bolts', volume: '760 units', share: '15%', tone: 'emerald' },
-];
-
-const dashboardSignals = [
-  { icon: HiOutlineShieldCheck, label: 'Secure Authentication' },
-  { icon: HiOutlineFingerPrint, label: 'Role Based Access' },
-  { icon: HiOutlineGlobeAlt, label: 'Cloud Backup' },
-  { icon: HiOutlineReceiptPercent, label: 'GST Ready' },
-  { icon: HiOutlineUsers, label: 'Multi User' },
-  { icon: HiOutlineLockClosed, label: 'Enterprise Security' },
-];
-
-const authChannels = [
-  { icon: HiOutlineEnvelope, label: 'Email login' },
-  { icon: HiOutlinePhone, label: 'Phone login' },
-  { icon: HiOutlineUserCircle, label: 'Invite-ready onboarding' },
-];
-
-const authFieldIds = {
+const fieldIds = {
   name: 'auth-name',
   emailOrPhone: 'auth-email-or-phone',
   phone: 'auth-phone',
   password: 'auth-password',
+  confirmPassword: 'auth-confirm-password',
+  address: 'auth-address',
+  country: 'auth-country',
+  state: 'auth-state',
+  district: 'auth-district',
+  city: 'auth-city',
+  village: 'auth-village',
+  street: 'auth-street',
+  pincode: 'auth-pincode',
 };
 
-const Auth = ({ onLogin }) => {
+const emptyLocation = {
+  address: '',
+  country: '',
+  state: '',
+  district: '',
+  city: '',
+  village: '',
+  street: '',
+  pincode: '',
+  latitude: '',
+  longitude: '',
+};
+
+const fetchLocationSuggestions = async (query) => {
+  if (!query || query.trim().length < 3) {
+    return [];
+  }
+
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`);
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json();
+  return Array.isArray(data)
+    ? data.map((item) => ({
+      label: item.display_name,
+      address: item.address || {},
+      latitude: item.lat,
+      longitude: item.lon,
+    }))
+    : [];
+};
+
+const toLocationFields = (candidate = {}) => ({
+  address: candidate.label || '',
+  country: candidate.address?.country || '',
+  state: candidate.address?.state || '',
+  district: candidate.address?.state_district || candidate.address?.county || '',
+  city: candidate.address?.city || candidate.address?.town || candidate.address?.village || '',
+  village: candidate.address?.village || '',
+  street: [candidate.address?.house_number, candidate.address?.road].filter(Boolean).join(' '),
+  pincode: candidate.address?.postcode || '',
+  latitude: candidate.latitude || '',
+  longitude: candidate.longitude || '',
+});
+
+const Auth = ({ onLogin, initialMode = 'login' }) => {
   const rememberedEmail = typeof window !== 'undefined' ? localStorage.getItem('rememberedEmail') || '' : '';
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(initialMode !== 'register');
+  const [registerStep, setRegisterStep] = useState(1);
   const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail));
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [capsLockOn, setCapsLockOn] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [touched, setTouched] = useState({});
   const [statusMessage, setStatusMessage] = useState('');
+  const [capsLockOn, setCapsLockOn] = useState(false);
+  const [locationState, setLocationState] = useState('idle');
+  const [locationMessage, setLocationMessage] = useState('');
+  const [locationQuery, setLocationQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const searchTimer = useRef(null);
   const [formData, setFormData] = useState({
     name: '',
     emailOrPhone: rememberedEmail,
     phone: '',
     password: '',
+    confirmPassword: '',
+    ...emptyLocation,
   });
 
-  const businessLine = useMemo(
-    () => (isLogin
-      ? 'Secure access for finance, operations, and control teams.'
-      : 'Provision enterprise users with structured onboarding and access controls.'),
-    [isLogin],
-  );
-
-  const validation = useMemo(() => {
-    const nextErrors = {};
-    if (!isLogin && formData.name.trim().length < 3) {
-      nextErrors.name = 'Enter the full employee or administrator name.';
-    }
-    if (!formData.emailOrPhone.trim()) {
-      nextErrors.emailOrPhone = 'Email or phone is required.';
-    }
-    if (!isLogin && !/^\+?[0-9][0-9\s()-]{7,}$/.test(formData.phone.trim())) {
-      nextErrors.phone = 'Enter a valid mobile number with 8+ digits.';
-    }
-    if (formData.password.trim().length < 3) {
-      nextErrors.password = 'Password must contain at least 8 characters.';
-    }
-    return nextErrors;
-  }, [formData, isLogin]);
-
-  const setMessage = (text, type = 'info') => {
-    setStatusMessage(text);
-    if (text) {
-      notify(text, type);
-    }
-  };
+  useEffect(() => {
+    setIsLogin(initialMode !== 'register');
+    setRegisterStep(1);
+    setSubmitAttempted(false);
+    setTouched({});
+    setStatusMessage('');
+    setLocationMessage('');
+  }, [initialMode]);
 
   useEffect(() => {
     const remembered = localStorage.getItem('rememberedEmail');
@@ -148,6 +121,63 @@ const Auth = ({ onLogin }) => {
       setRememberMe(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (isLogin || registerStep !== 2) {
+      setSuggestions([]);
+      return undefined;
+    }
+
+    if (searchTimer.current) {
+      clearTimeout(searchTimer.current);
+    }
+
+    searchTimer.current = window.setTimeout(async () => {
+      try {
+        setSuggestions(await fetchLocationSuggestions(locationQuery));
+      } catch {
+        setSuggestions([]);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimer.current) {
+        clearTimeout(searchTimer.current);
+      }
+    };
+  }, [isLogin, locationQuery, registerStep]);
+
+  const validation = useMemo(() => {
+    const errors = {};
+
+    if (!formData.emailOrPhone.trim()) errors.emailOrPhone = 'Email or phone is required.';
+    if (!formData.password.trim() || formData.password.trim().length < 8) errors.password = 'Password must contain at least 8 characters.';
+
+    if (!isLogin) {
+      if (!formData.name.trim()) errors.name = 'Full name is required.';
+      if (!/^\+?[0-9][0-9\s()-]{7,}$/.test(formData.phone.trim())) errors.phone = 'Enter a valid phone number.';
+      if (registerStep === 1 && formData.confirmPassword.trim() !== formData.password.trim()) errors.confirmPassword = 'Passwords do not match.';
+      if (registerStep === 2) {
+        if (!formData.country.trim()) errors.country = 'Country is required.';
+        if (!formData.state.trim()) errors.state = 'State is required.';
+        if (!formData.district.trim()) errors.district = 'District is required.';
+        if (!formData.city.trim()) errors.city = 'City is required.';
+        if (!formData.pincode.trim()) errors.pincode = 'PIN code is required.';
+        if (!formData.street.trim()) errors.street = 'Street address is required.';
+      }
+    }
+
+    return errors;
+  }, [formData, isLogin, registerStep]);
+
+  const setMessage = (text, type = 'info') => {
+    setStatusMessage(text);
+    if (text) {
+      notify(text, type);
+    }
+  };
+
+  const isFieldInvalid = (fieldName) => Boolean((submitAttempted || touched[fieldName]) && validation[fieldName]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -160,26 +190,135 @@ const Auth = ({ onLogin }) => {
   };
 
   const handlePasswordKey = (event) => {
-    setCapsLockOn(event.getModifierState('CapsLock'));
+    setCapsLockOn(Boolean(event.getModifierState && event.getModifierState('CapsLock')));
   };
 
-  const isFieldInvalid = (fieldName) => Boolean((submitAttempted || touched[fieldName]) && validation[fieldName]);
+  const applySuggestion = (suggestion) => {
+    setFormData((current) => ({ ...current, ...toLocationFields(suggestion) }));
+    setLocationQuery(suggestion.label || '');
+    setSuggestions([]);
+    setLocationMessage('Address suggestion applied.');
+    setLocationState('success');
+  };
+
+  const applyReverseGeocode = async (latitude, longitude) => {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`);
+      if (!response.ok) throw new Error('Reverse geocode failed');
+
+      const data = await response.json();
+      const address = data.address || {};
+      setFormData((current) => ({
+        ...current,
+        address: data.display_name || current.address,
+        country: address.country || current.country,
+        state: address.state || current.state,
+        district: address.state_district || address.county || current.district,
+        city: address.city || address.town || address.village || current.city,
+        village: address.village || current.village,
+        street: [address.house_number, address.road].filter(Boolean).join(' ') || current.street,
+        pincode: address.postcode || current.pincode,
+        latitude: String(latitude),
+        longitude: String(longitude),
+      }));
+      setLocationMessage('Current location applied successfully.');
+      setLocationState('success');
+    } catch {
+      setFormData((current) => ({ ...current, latitude: String(latitude), longitude: String(longitude) }));
+      setLocationMessage('Location detected, but address details need manual entry.');
+      setLocationState('error');
+    }
+  };
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationMessage('Location services are not available in this browser.');
+      setLocationState('error');
+      return;
+    }
+
+    setLocationState('loading');
+    setLocationMessage('Detecting your current address...');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        applyReverseGeocode(latitude, longitude);
+      },
+      () => {
+        setLocationState('error');
+        setLocationMessage('Permission denied. You can enter the address manually.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleSwitchMode = (mode) => {
+    setIsLogin(mode === 'login');
+    setRegisterStep(1);
+    setSubmitAttempted(false);
+    setTouched({});
+    setStatusMessage('');
+    setLocationMessage('');
+    setSuggestions([]);
+  };
+
+  const goNext = () => {
+    setSubmitAttempted(true);
+    const hasStepOneErrors = ['name', 'phone', 'emailOrPhone', 'password', 'confirmPassword'].some((key) => validation[key]);
+    if (hasStepOneErrors) {
+      setMessage('Complete the required fields before moving to step 2.', 'warning');
+      return;
+    }
+
+    setRegisterStep(2);
+    setSubmitAttempted(false);
+    setTouched({});
+  };
+
+  const goBack = () => {
+    setRegisterStep(1);
+    setSubmitAttempted(false);
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSubmitAttempted(true);
 
-    if (Object.keys(validation).length > 0) {
+    if (isLogin) {
+      if (validation.emailOrPhone || validation.password) {
+        setMessage('Please review the highlighted fields before continuing.', 'warning');
+        return;
+      }
+    } else if (registerStep === 1) {
+      goNext();
+      return;
+    } else if (Object.keys(validation).length > 0) {
       setMessage('Please review the highlighted fields before continuing.', 'warning');
       return;
     }
 
     setIsSubmitting(true);
-
     try {
       const payload = isLogin
         ? { email: formData.emailOrPhone, password: formData.password }
-        : { name: formData.name, email: formData.emailOrPhone, phone: formData.phone, password: formData.password };
+        : {
+            name: formData.name,
+            email: formData.emailOrPhone,
+            phone: formData.phone,
+            password: formData.password,
+            location: {
+              address: formData.address,
+              country: formData.country,
+              state: formData.state,
+              district: formData.district,
+              city: formData.city,
+              village: formData.village,
+              street: formData.street,
+              pincode: formData.pincode,
+              latitude: formData.latitude,
+              longitude: formData.longitude,
+            },
+          };
 
       const response = isLogin ? await login(payload) : await register(payload);
       setMessage(response.data.message || 'Success', 'success');
@@ -197,10 +336,12 @@ const Auth = ({ onLogin }) => {
         onLogin();
       } else if (!isLogin) {
         setIsLogin(true);
-        setFormData({ name: '', emailOrPhone: formData.emailOrPhone, phone: '', password: '' });
+        setRegisterStep(1);
+        setFormData({ name: '', emailOrPhone: formData.emailOrPhone, phone: '', password: '', confirmPassword: '', ...emptyLocation });
         setTouched({});
         setSubmitAttempted(false);
         setShowPassword(false);
+        setShowConfirmPassword(false);
       }
     } catch (error) {
       setMessage(error.response?.data?.message || 'Authentication failed. Please try again.', 'danger');
@@ -210,417 +351,247 @@ const Auth = ({ onLogin }) => {
   };
 
   return (
-    <div className="auth-shell">
-      <section className="auth-art-panel" aria-label="ERP platform preview">
-        <div className="auth-ambient auth-ambient-a" aria-hidden="true" />
-        <div className="auth-ambient auth-ambient-b" aria-hidden="true" />
-        <div className="auth-grid-overlay" aria-hidden="true" />
-
-        <div className="auth-brand-block">
-          <div className="auth-brand-badge" aria-hidden="true">
-            <HiOutlineBuildingOffice2 />
+    <div className="auth-card-shell">
+      <div className="auth-card-topline">
+        <div className="auth-brand-line auth-card-brand-line">
+          <div className="auth-brand-mark" aria-hidden="true">PE</div>
+          <div>
+            <div className="auth-company-name">Pearry ERP Enterprise</div>
+            <div className="auth-company-subtitle">Commercial Operations Platform</div>
           </div>
-
-          <div className="auth-brand-copy">
-            <div className="auth-kicker">Pearry ERP Enterprise Edition v4.2</div>
-            <h1>Run finance, inventory, sales, purchases and HR from one unified ERP platform.</h1>
-            <p>{businessLine}</p>
-            <div className="auth-channel-row" aria-label="Supported access channels">
-              {authChannels.map((channel) => {
-                const Icon = channel.icon;
-                return (
-                  <span key={channel.label} className="auth-channel-chip">
-                    <Icon aria-hidden="true" />
-                    {channel.label}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
+          <div className="auth-version-chip">Enterprise Edition v4.2</div>
         </div>
 
-        <div className="auth-badge-row" role="list" aria-label="Platform features">
-          {platformBadges.map((badge) => (
-            <span key={badge} className="auth-badge-pill" role="listitem">
-              {badge}
-            </span>
-          ))}
+        <div className="auth-mode-switch auth-mode-switch-compact" role="tablist" aria-label="Authentication mode">
+          <button type="button" className={`auth-mode-btn ${isLogin ? 'active' : ''}`} onClick={() => handleSwitchMode('login')} aria-pressed={isLogin}>Login</button>
+          <button type="button" className={`auth-mode-btn ${!isLogin ? 'active' : ''}`} onClick={() => handleSwitchMode('register')} aria-pressed={!isLogin}>Register</button>
         </div>
+      </div>
 
-        <div className="auth-dashboard-mockup">
-          <div className="auth-dashboard-topbar">
-            <div>
-              <div className="auth-preview-label">Live operations center</div>
-              <strong>Commercial ERP dashboard preview</strong>
-            </div>
-            <div className="auth-dashboard-status">
-              <span className="auth-live-dot" aria-hidden="true" />
-              <span>12 live alerts</span>
-            </div>
-          </div>
-
-          <div className="auth-metric-grid">
-            {previewStats.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article key={item.label} className={`auth-metric-card tone-${item.tone}`}>
-                  <div className="auth-metric-icon" aria-hidden="true">
-                    <Icon />
-                  </div>
-                  <div>
-                    <span>{item.label}</span>
-                    <strong>{item.value}</strong>
-                    <small>{item.meta}</small>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-
-          <div className="auth-analytics-grid">
-            <section className="auth-panel auth-chart-panel auth-chart-panel-wide">
-              <div className="auth-section-title">
-                <span>Monthly Revenue</span>
-                <strong>₹48.2L rolling trend</strong>
-              </div>
-              <div className="auth-chart">
-                {monthlyRevenue.map((bar, index) => (
-                  <div key={`rev-${bar}-${index}`} className="auth-chart-column" style={{ '--column-index': index }}>
-                    <div className="auth-chart-bar revenue" style={{ height: `${bar}%` }} />
-                    <span>{index + 1}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="auth-panel auth-chart-panel">
-              <div className="auth-section-title">
-                <span>Weekly Sales</span>
-                <strong>128 orders closed</strong>
-              </div>
-              <div className="auth-mini-bars">
-                {weeklySales.map((value, index) => (
-                  <div key={`sales-${index}`} className="auth-mini-bar-row">
-                    <span>{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index]}</span>
-                    <div className="auth-mini-bar-track">
-                      <div className="auth-mini-bar-fill sales" style={{ width: `${value}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="auth-panel auth-trend-panel">
-              <div className="auth-section-title">
-                <span>Inventory Trend</span>
-                <strong>Warehouse stability in motion</strong>
-              </div>
-              <div className="auth-spark-grid">
-                {inventoryTrend.map((value, index) => (
-                  <div key={`stock-${index}`} className="auth-spark-column">
-                    <div className="auth-spark-track">
-                      <div className="auth-spark-fill" style={{ height: `${value}%` }} />
-                    </div>
-                    <span>{index + 1}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="auth-alert-stack">
-                <div>
-                  <strong>Low Stock Alerts</strong>
-                  <span>12 items require replenishment today.</span>
-                </div>
-                <div className="auth-alert-pill">3 critical</div>
-              </div>
-            </section>
-          </div>
-
-          <div className="auth-bottom-grid">
-            <section className="auth-panel auth-table-panel">
-              <div className="auth-section-title">
-                <span>Recent Invoices</span>
-                <strong>Active billing queue</strong>
-              </div>
-              <div className="auth-table">
-                {recentInvoices.map((invoice) => (
-                  <div key={invoice.id} className="auth-table-row">
-                    <div>
-                      <strong>{invoice.id}</strong>
-                      <span>{invoice.client}</span>
-                    </div>
-                    <div className={`auth-status-chip status-${invoice.status.toLowerCase().replace(/\s+/g, '-')}`}>
-                      {invoice.status}
-                    </div>
-                    <strong>{invoice.amount}</strong>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="auth-panel auth-timeline-panel">
-              <div className="auth-section-title">
-                <span>Recent Activities</span>
-                <strong>Live operations feed</strong>
-              </div>
-              <div className="auth-timeline">
-                {recentActivity.map((item) => (
-                  <div key={item.label} className="auth-timeline-row">
-                    <div className="auth-timeline-marker" aria-hidden="true" />
-                    <div>
-                      <strong>{item.label}</strong>
-                      <span>{item.meta}</span>
-                    </div>
-                    <div className="auth-status-chip status-live">{item.badge}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="auth-panel auth-products-panel">
-              <div className="auth-section-title">
-                <span>Top Selling Products</span>
-                <strong>Fast movers this month</strong>
-              </div>
-              <div className="auth-product-list">
-                {topProducts.map((product) => (
-                  <div key={product.name} className="auth-product-row">
-                    <div>
-                      <strong>{product.name}</strong>
-                      <span>{product.volume}</span>
-                    </div>
-                    <div className="auth-product-share">
-                      <span>{product.share}</span>
-                      <div className="auth-product-track">
-                        <div className={`auth-product-fill tone-${product.tone}`} style={{ width: product.share }} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+      {!isLogin && (
+        <div className="auth-progress" aria-label={`Registration step ${registerStep} of 2`}>
+          <div className="auth-progress-text">Step {registerStep} of 2</div>
+          <div className="auth-progress-track" aria-hidden="true">
+            <span className={`auth-progress-dot ${registerStep >= 1 ? 'active' : ''}`} />
+            <span className={`auth-progress-line ${registerStep >= 2 ? 'active' : ''}`} />
+            <span className={`auth-progress-dot ${registerStep >= 2 ? 'active' : ''}`} />
           </div>
         </div>
-      </section>
+      )}
 
-      <aside className="auth-form-panel">
-        <div className="auth-form-card">
-          <div className="auth-brand-line">
-            <div className="auth-brand-mark" aria-hidden="true">
-              PE
-            </div>
-            <div>
-              <div className="auth-company-name">Pearry ERP Enterprise</div>
-              <div className="auth-company-subtitle">Commercial Operations Platform</div>
-            </div>
-            <div className="auth-version-chip">Enterprise Edition v4.2</div>
-          </div>
+      <div className="auth-card-header">
+        <div className="auth-card-kicker">{isLogin ? 'Secure enterprise access' : `Registration step ${registerStep} of 2`}</div>
+        <h2>{isLogin ? 'Sign in to the ERP control plane' : registerStep === 1 ? 'Create your account' : 'Complete your location'}</h2>
+        <p>{isLogin ? 'Use your email or phone number to access the platform.' : registerStep === 1 ? 'We only ask for the essentials first.' : 'Add the address used for onboarding, billing, or delivery.'}</p>
+      </div>
 
-          <div className="auth-mode-switch" role="tablist" aria-label="Authentication mode">
-            <button type="button" className={`auth-mode-btn ${isLogin ? 'active' : ''}`} onClick={() => setIsLogin(true)} aria-pressed={isLogin}>
-              Login
-            </button>
-            <button type="button" className={`auth-mode-btn ${!isLogin ? 'active' : ''}`} onClick={() => setIsLogin(false)} aria-pressed={!isLogin}>
-              Register
-            </button>
-          </div>
+      {statusMessage && <div className="auth-status-banner" role="status" aria-live="polite">{statusMessage}</div>}
 
-          <div className="auth-card-header">
-            <div className="auth-card-kicker">{isLogin ? 'Secure enterprise access' : 'Provision a business user'}</div>
-            <h2>{isLogin ? 'Sign in to the ERP control plane' : 'Register a commercial workspace user'}</h2>
-            <p>{isLogin ? 'Use your email or phone number to access the operational suite.' : 'Create a user that can be assigned to finance, inventory, HR, or operations.'}</p>
-          </div>
-
-          {statusMessage && (
-            <div className="auth-status-banner" role="status" aria-live="polite">
-              {statusMessage}
-            </div>
-          )}
-
-          <form className="auth-form" onSubmit={handleSubmit} noValidate>
-            {!isLogin && (
-              <div className="auth-field-group">
-                <label className="auth-label" htmlFor={authFieldIds.name}>
-                  Full name
-                </label>
-                <div className={`auth-field ${isFieldInvalid('name') ? 'invalid' : ''} ${!validation.name && touched.name ? 'valid' : ''}`}>
-                  <span className="auth-field-icon" aria-hidden="true">
-                    <HiOutlineUser />
-                  </span>
-                  <input
-                    id={authFieldIds.name}
-                    type="text"
-                    name="name"
-                    autoComplete="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    placeholder="Aarav Mehta"
-                    aria-invalid={isFieldInvalid('name')}
-                    aria-describedby={isFieldInvalid('name') ? 'auth-name-error' : undefined}
-                    required
-                  />
-                </div>
-                {isFieldInvalid('name') && (
-                  <div className="auth-field-feedback" id="auth-name-error">
-                    {validation.name}
-                  </div>
-                )}
+      <form className="auth-form" onSubmit={handleSubmit} noValidate>
+        {isLogin && (
+          <>
+            <div className="auth-field-group">
+              <label className="auth-label" htmlFor={fieldIds.emailOrPhone}>Email / Phone</label>
+              <div className={`auth-field ${isFieldInvalid('emailOrPhone') ? 'invalid' : ''}`}>
+                <span className="auth-field-icon" aria-hidden="true"><HiOutlineEnvelope /></span>
+                <input id={fieldIds.emailOrPhone} type="text" name="emailOrPhone" autoComplete="username" value={formData.emailOrPhone} onChange={handleChange} onBlur={handleBlur} placeholder="name@company.com or +91 98765 43210" aria-invalid={isFieldInvalid('emailOrPhone')} required />
               </div>
-            )}
+              {isFieldInvalid('emailOrPhone') && <div className="auth-field-feedback">{validation.emailOrPhone}</div>}
+            </div>
 
             <div className="auth-field-group">
-              <label className="auth-label" htmlFor={authFieldIds.emailOrPhone}>
-                Email / Phone
-              </label>
-              <div className={`auth-field ${isFieldInvalid('emailOrPhone') ? 'invalid' : ''} ${!validation.emailOrPhone && touched.emailOrPhone ? 'valid' : ''}`}>
-                <span className="auth-field-icon" aria-hidden="true">
-                  <HiOutlineEnvelope />
-                </span>
-                <input
-                  id={authFieldIds.emailOrPhone}
-                  type="text"
-                  name="emailOrPhone"
-                  autoComplete="username"
-                  value={formData.emailOrPhone}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  placeholder="name@company.com or +91 98765 43210"
-                  aria-invalid={isFieldInvalid('emailOrPhone')}
-                  aria-describedby={isFieldInvalid('emailOrPhone') ? 'auth-login-error' : undefined}
-                  required
-                />
+              <label className="auth-label" htmlFor={fieldIds.password}>Password</label>
+              <div className={`auth-field auth-field-password ${isFieldInvalid('password') ? 'invalid' : ''}`}>
+                <span className="auth-field-icon" aria-hidden="true"><HiOutlineLockClosed /></span>
+                <input id={fieldIds.password} type={showPassword ? 'text' : 'password'} name="password" autoComplete="current-password" value={formData.password} onChange={handleChange} onBlur={handleBlur} onKeyUp={handlePasswordKey} onKeyDown={handlePasswordKey} onFocus={handlePasswordKey} placeholder="Enter your password" aria-invalid={isFieldInvalid('password')} aria-describedby={isFieldInvalid('password') ? 'auth-password-error' : capsLockOn ? 'auth-password-caps' : undefined} required />
+                <button type="button" className="auth-password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <HiOutlineEyeSlash aria-hidden="true" /> : <HiOutlineEye aria-hidden="true" />}</button>
               </div>
-              {isFieldInvalid('emailOrPhone') && (
-                <div className="auth-field-feedback" id="auth-login-error">
-                  {validation.emailOrPhone}
-                </div>
-              )}
-            </div>
-
-            {!isLogin && (
-              <div className="auth-field-group">
-                <label className="auth-label" htmlFor={authFieldIds.phone}>
-                  Phone
-                </label>
-                <div className={`auth-field ${isFieldInvalid('phone') ? 'invalid' : ''} ${!validation.phone && touched.phone ? 'valid' : ''}`}>
-                  <span className="auth-field-icon" aria-hidden="true">
-                    <HiOutlinePhone />
-                  </span>
-                  <input
-                    id={authFieldIds.phone}
-                    type="tel"
-                    name="phone"
-                    autoComplete="tel"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    onBlur={handleBlur}
-                    placeholder="+91 90000 12345"
-                    aria-invalid={isFieldInvalid('phone')}
-                    aria-describedby={isFieldInvalid('phone') ? 'auth-phone-error' : undefined}
-                    required
-                  />
-                </div>
-                {isFieldInvalid('phone') && (
-                  <div className="auth-field-feedback" id="auth-phone-error">
-                    {validation.phone}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="auth-field-group">
-              <label className="auth-label" htmlFor={authFieldIds.password}>
-                Password
-              </label>
-              <div className={`auth-field auth-field-password ${isFieldInvalid('password') ? 'invalid' : ''} ${!validation.password && touched.password ? 'valid' : ''}`}>
-                <span className="auth-field-icon" aria-hidden="true">
-                  <HiOutlineLockClosed />
-                </span>
-                <input
-                  id={authFieldIds.password}
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  autoComplete={isLogin ? 'current-password' : 'new-password'}
-                  value={formData.password}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  onKeyUp={handlePasswordKey}
-                  onKeyDown={handlePasswordKey}
-                  onFocus={handlePasswordKey}
-                  placeholder={isLogin ? 'Enter your secure password' : 'Create a strong password'}
-                  aria-invalid={isFieldInvalid('password')}
-                  aria-describedby={isFieldInvalid('password') ? 'auth-password-error' : capsLockOn ? 'auth-password-caps' : undefined}
-                  required
-                />
-                <button
-                  type="button"
-                  className="auth-password-toggle"
-                  onClick={() => setShowPassword((current) => !current)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <HiOutlineEyeSlash aria-hidden="true" /> : <HiOutlineEye aria-hidden="true" />}
-                </button>
-              </div>
-              {capsLockOn && (
-                <div className="auth-field-hint" id="auth-password-caps">
-                  Caps Lock is on.
-                </div>
-              )}
-              {isFieldInvalid('password') && (
-                <div className="auth-field-feedback" id="auth-password-error">
-                  {validation.password}
-                </div>
-              )}
+              {capsLockOn && <div className="auth-field-hint" id="auth-password-caps">Caps Lock is on.</div>}
+              {isFieldInvalid('password') && <div className="auth-field-feedback" id="auth-password-error">{validation.password}</div>}
             </div>
 
             <div className="auth-form-row">
-              {isLogin ? (
-                <label className="auth-remember">
-                  <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
-                  <span>Remember me</span>
-                </label>
-              ) : (
-                <div className="auth-form-note">
-                  New users will receive role-based access and invite tracking.
-                </div>
-              )}
-
-              <button
-                type="button"
-                className="auth-link-button"
-                onClick={() => notify('Ask an administrator to resend your account invite if you cannot sign in.', 'info')}
-              >
-                Forgot password?
-              </button>
+              <label className="auth-remember">
+                <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
+                <span>Remember me</span>
+              </label>
+              <button type="button" className="auth-link-button" onClick={() => notify('Ask an administrator to resend your account invite if you cannot sign in.', 'info')}>Forgot password?</button>
             </div>
 
-            <button type="submit" className="auth-submit-btn" disabled={isSubmitting}>
-              <span className="auth-submit-label">{isLogin ? 'Login to ERP' : 'Register user'}</span>
-              {isSubmitting ? (
-                <span className="auth-spinner" aria-hidden="true" />
-              ) : (
-                <HiOutlineArrowRight aria-hidden="true" />
-              )}
+            <div className="auth-login-note">
+              <HiOutlineWifi />
+              <span>SSO will be available in a future release.</span>
+            </div>
+
+            <button type="submit" className="auth-submit-btn auth-submit-login" disabled={isSubmitting}>
+              <span className="auth-submit-label">Login</span>
+              {isSubmitting ? <span className="auth-spinner" aria-hidden="true" /> : <HiOutlineArrowRight aria-hidden="true" />}
             </button>
 
-            <div className="auth-future-ready">
-              <span>SSO-ready for Google Workspace, Microsoft Entra, and future enterprise identity providers.</span>
+            <div className="auth-assurance-grid">
+              <div className="auth-assurance-card"><HiOutlineCheckCircle /><span>Fast session handoff into the ERP shell.</span></div>
+              <div className="auth-assurance-card"><HiOutlineSparkles /><span>Secure token handling with refresh support.</span></div>
+              <div className="auth-assurance-card"><HiOutlineWifi /><span>Remember me keeps trusted devices signed in.</span></div>
             </div>
-          </form>
+          </>
+        )}
 
-          <div className="auth-assurance-grid" aria-label="Security and compliance highlights">
-            {dashboardSignals.map((item) => {
-              const Icon = item.icon;
-              return (
-                <article key={item.label} className="auth-assurance-card">
-                  <Icon aria-hidden="true" />
-                  <span>{item.label}</span>
-                </article>
-              );
-            })}
+        {!isLogin && registerStep === 1 && (
+          <>
+            <div className="auth-field-group">
+              <label className="auth-label" htmlFor={fieldIds.name}>Full name</label>
+              <div className={`auth-field ${isFieldInvalid('name') ? 'invalid' : ''}`}>
+                <span className="auth-field-icon" aria-hidden="true"><HiOutlineUser /></span>
+                <input id={fieldIds.name} type="text" name="name" autoComplete="name" value={formData.name} onChange={handleChange} onBlur={handleBlur} placeholder="Aarav Mehta" aria-invalid={isFieldInvalid('name')} required />
+              </div>
+              {isFieldInvalid('name') && <div className="auth-field-feedback">{validation.name}</div>}
+            </div>
+
+            <div className="auth-field-group">
+              <label className="auth-label" htmlFor={fieldIds.phone}>Phone</label>
+              <div className={`auth-field ${isFieldInvalid('phone') ? 'invalid' : ''}`}>
+                <span className="auth-field-icon" aria-hidden="true"><HiOutlinePhone /></span>
+                <input id={fieldIds.phone} type="tel" name="phone" autoComplete="tel" value={formData.phone} onChange={handleChange} onBlur={handleBlur} placeholder="+91 90000 12345" aria-invalid={isFieldInvalid('phone')} required />
+              </div>
+              {isFieldInvalid('phone') && <div className="auth-field-feedback">{validation.phone}</div>}
+            </div>
+
+            <div className="auth-field-group">
+              <label className="auth-label" htmlFor={fieldIds.emailOrPhone}>Email</label>
+              <div className={`auth-field ${isFieldInvalid('emailOrPhone') ? 'invalid' : ''}`}>
+                <span className="auth-field-icon" aria-hidden="true"><HiOutlineEnvelope /></span>
+                <input id={fieldIds.emailOrPhone} type="email" name="emailOrPhone" autoComplete="email" value={formData.emailOrPhone} onChange={handleChange} onBlur={handleBlur} placeholder="name@company.com" aria-invalid={isFieldInvalid('emailOrPhone')} required />
+              </div>
+              {isFieldInvalid('emailOrPhone') && <div className="auth-field-feedback">{validation.emailOrPhone}</div>}
+            </div>
+
+            <div className="auth-field-group">
+              <label className="auth-label" htmlFor={fieldIds.password}>Password</label>
+              <div className={`auth-field auth-field-password ${isFieldInvalid('password') ? 'invalid' : ''}`}>
+                <span className="auth-field-icon" aria-hidden="true"><HiOutlineLockClosed /></span>
+                <input id={fieldIds.password} type={showPassword ? 'text' : 'password'} name="password" autoComplete="new-password" value={formData.password} onChange={handleChange} onBlur={handleBlur} onKeyUp={handlePasswordKey} onKeyDown={handlePasswordKey} onFocus={handlePasswordKey} placeholder="Create a password" aria-invalid={isFieldInvalid('password')} aria-describedby={isFieldInvalid('password') ? 'auth-password-error' : capsLockOn ? 'auth-password-caps' : undefined} required />
+                <button type="button" className="auth-password-toggle" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <HiOutlineEyeSlash aria-hidden="true" /> : <HiOutlineEye aria-hidden="true" />}</button>
+              </div>
+              {capsLockOn && <div className="auth-field-hint" id="auth-password-caps">Caps Lock is on.</div>}
+              {isFieldInvalid('password') && <div className="auth-field-feedback" id="auth-password-error">{validation.password}</div>}
+            </div>
+
+            <div className="auth-field-group">
+              <label className="auth-label" htmlFor={fieldIds.confirmPassword}>Confirm password</label>
+              <div className={`auth-field auth-field-password ${isFieldInvalid('confirmPassword') ? 'invalid' : ''}`}>
+                <span className="auth-field-icon" aria-hidden="true"><HiOutlineLockClosed /></span>
+                <input id={fieldIds.confirmPassword} type={showConfirmPassword ? 'text' : 'password'} name="confirmPassword" autoComplete="new-password" value={formData.confirmPassword} onChange={handleChange} onBlur={handleBlur} placeholder="Confirm password" aria-invalid={isFieldInvalid('confirmPassword')} required />
+                <button type="button" className="auth-password-toggle" onClick={() => setShowConfirmPassword((current) => !current)} aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}>{showConfirmPassword ? <HiOutlineEyeSlash aria-hidden="true" /> : <HiOutlineEye aria-hidden="true" />}</button>
+              </div>
+              {isFieldInvalid('confirmPassword') && <div className="auth-field-feedback">{validation.confirmPassword}</div>}
+            </div>
+
+            <div className="auth-form-note auth-form-note-compact">Step 2 will collect the location details used across the ERP.</div>
+
+            <div className="auth-step-actions">
+              <button type="button" className="auth-secondary-btn" onClick={() => handleSwitchMode('login')}>Cancel</button>
+              <button type="button" className="auth-submit-btn auth-submit-secondary" onClick={goNext}>
+                <span className="auth-submit-label">Next</span>
+                <HiOutlineArrowRight aria-hidden="true" />
+              </button>
+            </div>
+          </>
+        )}
+
+        {!isLogin && registerStep === 2 && (
+          <div className="auth-location-box auth-location-step">
+            <button type="button" className={`auth-location-card ${locationState}`} onClick={useCurrentLocation}>
+              <span className="auth-location-card-icon" aria-hidden="true">
+                {locationState === 'loading' ? <span className="auth-location-spinner" /> : locationState === 'success' ? <HiOutlineCheckCircle /> : <HiOutlineMapPin />}
+              </span>
+              <span>
+                <strong>Use Current Location</strong>
+                <small>{locationState === 'loading' ? 'Detecting your address...' : locationMessage || 'Automatically detect your address'}</small>
+              </span>
+            </button>
+
+            <div className="auth-location-search">
+              <label className="auth-label" htmlFor="auth-location-search">Location autocomplete</label>
+              <div className="auth-field">
+                <span className="auth-field-icon" aria-hidden="true"><HiOutlineGlobeAlt /></span>
+                <input id="auth-location-search" type="text" value={locationQuery} onChange={(event) => setLocationQuery(event.target.value)} placeholder="Search by city, district, or street" />
+              </div>
+              {suggestions.length > 0 && (
+                <div className="auth-suggestion-list">
+                  {suggestions.map((item) => (
+                    <button type="button" key={item.label} className="auth-suggestion-item" onClick={() => applySuggestion(item)}>
+                      <strong>{item.label}</strong>
+                      <span>Autofill address fields</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="auth-location-grid auth-location-grid-step2">
+              <div className="auth-field-group auth-field-span-2">
+                <label className="auth-label" htmlFor={fieldIds.address}>Street address</label>
+                <div className="auth-field">
+                  <span className="auth-field-icon" aria-hidden="true"><HiOutlineMapPin /></span>
+                  <input id={fieldIds.address} type="text" name="address" value={formData.address} onChange={handleChange} placeholder="House, street, landmark" />
+                </div>
+              </div>
+              <div className="auth-field-group">
+                <label className="auth-label" htmlFor={fieldIds.country}>Country</label>
+                <div className={`auth-field ${isFieldInvalid('country') ? 'invalid' : ''}`}><input id={fieldIds.country} type="text" name="country" value={formData.country} onChange={handleChange} onBlur={handleBlur} placeholder="Country" aria-invalid={isFieldInvalid('country')} /></div>
+                {isFieldInvalid('country') && <div className="auth-field-feedback">{validation.country}</div>}
+              </div>
+              <div className="auth-field-group">
+                <label className="auth-label" htmlFor={fieldIds.state}>State</label>
+                <div className={`auth-field ${isFieldInvalid('state') ? 'invalid' : ''}`}><input id={fieldIds.state} type="text" name="state" value={formData.state} onChange={handleChange} onBlur={handleBlur} placeholder="State" aria-invalid={isFieldInvalid('state')} /></div>
+                {isFieldInvalid('state') && <div className="auth-field-feedback">{validation.state}</div>}
+              </div>
+              <div className="auth-field-group">
+                <label className="auth-label" htmlFor={fieldIds.district}>District</label>
+                <div className={`auth-field ${isFieldInvalid('district') ? 'invalid' : ''}`}><input id={fieldIds.district} type="text" name="district" value={formData.district} onChange={handleChange} onBlur={handleBlur} placeholder="District" aria-invalid={isFieldInvalid('district')} /></div>
+                {isFieldInvalid('district') && <div className="auth-field-feedback">{validation.district}</div>}
+              </div>
+              <div className="auth-field-group">
+                <label className="auth-label" htmlFor={fieldIds.city}>City</label>
+                <div className={`auth-field ${isFieldInvalid('city') ? 'invalid' : ''}`}><input id={fieldIds.city} type="text" name="city" value={formData.city} onChange={handleChange} onBlur={handleBlur} placeholder="City" aria-invalid={isFieldInvalid('city')} /></div>
+                {isFieldInvalid('city') && <div className="auth-field-feedback">{validation.city}</div>}
+              </div>
+              <div className="auth-field-group">
+                <label className="auth-label" htmlFor={fieldIds.village}>Village</label>
+                <div className="auth-field"><input id={fieldIds.village} type="text" name="village" value={formData.village} onChange={handleChange} placeholder="Optional" /></div>
+              </div>
+              <div className="auth-field-group">
+                <label className="auth-label" htmlFor={fieldIds.pincode}>PIN code</label>
+                <div className={`auth-field ${isFieldInvalid('pincode') ? 'invalid' : ''}`}><input id={fieldIds.pincode} type="text" name="pincode" value={formData.pincode} onChange={handleChange} onBlur={handleBlur} placeholder="PIN code" aria-invalid={isFieldInvalid('pincode')} /></div>
+                {isFieldInvalid('pincode') && <div className="auth-field-feedback">{validation.pincode}</div>}
+              </div>
+              <div className="auth-field-group auth-field-span-2">
+                <label className="auth-label" htmlFor={fieldIds.street}>Street details</label>
+                <div className={`auth-field ${isFieldInvalid('street') ? 'invalid' : ''}`}><input id={fieldIds.street} type="text" name="street" value={formData.street} onChange={handleChange} onBlur={handleBlur} placeholder="House number, street, landmark" aria-invalid={isFieldInvalid('street')} /></div>
+                {isFieldInvalid('street') && <div className="auth-field-feedback">{validation.street}</div>}
+              </div>
+              <div className="auth-field-group">
+                <label className="auth-label" htmlFor="auth-latitude">Latitude</label>
+                <div className="auth-field"><input id="auth-latitude" name="latitude" value={formData.latitude} onChange={handleChange} placeholder="Latitude" /></div>
+              </div>
+              <div className="auth-field-group">
+                <label className="auth-label" htmlFor="auth-longitude">Longitude</label>
+                <div className="auth-field"><input id="auth-longitude" name="longitude" value={formData.longitude} onChange={handleChange} placeholder="Longitude" /></div>
+              </div>
+            </div>
+
+            <div className="auth-location-footer">
+              <button type="button" className="auth-secondary-btn" onClick={goBack}>Back</button>
+              <button type="submit" className="auth-submit-btn">
+                <span className="auth-submit-label">Register</span>
+                {isSubmitting ? <span className="auth-spinner" aria-hidden="true" /> : <HiOutlineArrowRight aria-hidden="true" />}
+              </button>
+            </div>
           </div>
-        </div>
-      </aside>
+        )}
+
+        <div className="auth-future-ready">Powered by Pearry ERP</div>
+      </form>
     </div>
   );
 };

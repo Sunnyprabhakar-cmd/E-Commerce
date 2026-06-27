@@ -16,6 +16,13 @@ import { dashboardHomeView, getNavigationItems } from '../constants/navigation';
 import { refreshAuthToken } from '../services/authService';
 import LoadingSpinner from './common/LoadingSpinner';
 
+const getInitialSidebarState = () => {
+  if (typeof window === 'undefined') {
+    return true;
+  }
+  return window.innerWidth >= 1024;
+};
+
 const decodeToken = (token) => {
   try {
     if (!token) return null;
@@ -51,7 +58,7 @@ const Dashboard = () => {
   });
   const [editingProduct, setEditingProduct] = useState(null);
   const [cartCount, setCartCount] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(getInitialSidebarState);
 
   const canManageProducts = userRole === 'admin' || permissions.can_create_product || permissions.can_update_product || permissions.can_delete_product;
   const isAdmin = userRole === 'admin';
@@ -189,6 +196,16 @@ const Dashboard = () => {
     };
     // Existing token is intentionally read once on mount for bootstrapping.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const syncSidebar = () => {
+      setSidebarOpen(window.innerWidth >= 1024);
+    };
+
+    syncSidebar();
+    window.addEventListener('resize', syncSidebar, { passive: true });
+    return () => window.removeEventListener('resize', syncSidebar);
   }, []);
 
   useEffect(() => {
