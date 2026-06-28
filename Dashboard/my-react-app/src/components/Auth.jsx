@@ -344,21 +344,8 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
         setShowConfirmPassword(false);
       }
     } catch (error) {
-  console.log(error);
-
-  alert(JSON.stringify({
-    message: error.message,
-    status: error.response?.status,
-    data: error.response?.data
-  }));
-
-  setMessage(
-    error.response?.data?.message ||
-    error.message ||
-    "Authentication failed. Please try again.",
-    "danger"
-  );
-} finally {
+      setMessage(error.response?.data?.message || 'Authentication failed. Please try again.', 'danger');
+    } finally {
       setIsSubmitting(false);
     }
   };
