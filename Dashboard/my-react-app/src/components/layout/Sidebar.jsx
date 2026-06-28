@@ -1,6 +1,6 @@
 import { dashboardNavigationMark } from '../../constants/navigation';
 
-const Sidebar = ({ items, activeView, sidebarOpen, sessionName, userRole, onNavigate, onLogout, onHome }) => {
+const Sidebar = ({ items, activeView, sidebarOpen, sessionName, userRole, onNavigate, onLogout, onHome, onNavigateAndClose }) => {
   const BrandIcon = dashboardNavigationMark;
 
   return (
@@ -20,7 +20,7 @@ const Sidebar = ({ items, activeView, sidebarOpen, sessionName, userRole, onNavi
             key={item.view}
             type="button"
             className={`sidebar-link ${activeView === item.view ? 'active' : ''}`}
-            onClick={() => onNavigate(item.view)}
+            onClick={() => (onNavigateAndClose || onNavigate)(item.view)}
             title={item.label}
             data-tooltip={item.label}
           >

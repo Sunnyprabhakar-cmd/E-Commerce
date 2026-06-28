@@ -23,6 +23,12 @@ const DashboardLayout = ({
       sessionName={session?.name}
       userRole={userRole}
       onNavigate={onNavigate}
+      onNavigateAndClose={(view) => {
+        onNavigate(view);
+        if (typeof window !== 'undefined' && window.innerWidth <= 1023) {
+          onToggleSidebar();
+        }
+      }}
       onLogout={onLogout}
       onHome={onHome}
     />

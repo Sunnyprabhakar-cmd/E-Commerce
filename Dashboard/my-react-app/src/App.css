@@ -92,6 +92,7 @@
   flex-direction: column;
   gap: 0.55rem;
   overflow-y: auto;
+  min-height: 0;
   padding-right: 0.2rem;
 }
 
@@ -160,6 +161,11 @@
 .topbar-toggle {
   flex: 0 0 auto;
   background: linear-gradient(135deg, var(--brand-accent), var(--brand-red));
+}
+
+.dashboard-topbar .sidebar-toggle-icon {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .dashboard-topbar-title {
@@ -1367,6 +1373,43 @@
   border-color: transparent;
 }
 
+.toolbar-button.icon-only,
+.filter-panel-toggle,
+.icon-menu-toggle {
+  min-width: 3rem;
+  justify-content: center;
+}
+
+.filter-panel-toggle .filter-panel-label {
+  display: inline;
+}
+
+.icon-menu-shell {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.icon-menu-panel {
+  display: none;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+}
+
+.icon-menu-shell.open .icon-menu-panel {
+  display: grid;
+}
+
+.sort-menu-content {
+  display: grid;
+  gap: 0.65rem;
+}
+
 .toolbar-button.icon-toggle.active {
   box-shadow: 0 14px 26px rgba(79, 70, 229, 0.18);
 }
@@ -1505,6 +1548,8 @@
   .dashboard-sidebar {
     width: 280px;
     transform: translateX(0);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .dashboard-layout.sidebar-collapsed .dashboard-sidebar {
@@ -1536,6 +1581,7 @@
 
   .toolbar-actions-main {
     align-items: stretch;
+    gap: 0.55rem;
   }
 
   .toolbar-actions-main .search-bar-shell,
@@ -1560,6 +1606,76 @@
   .toolbar-button {
     flex: 1 1 auto;
     justify-content: center;
+  }
+
+  .toolbar-actions-main .toolbar-button span:not(.visually-hidden) {
+    display: none;
+  }
+
+  .toolbar-actions-main .toolbar-button:not(.primary),
+  .toolbar-actions-main .search-bar-shell,
+  .toolbar-actions-main .filter-panel-shell,
+  .toolbar-actions-main .icon-menu-shell {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .toolbar-actions-main .toolbar-button:not(.primary) {
+    min-width: 3rem;
+    padding-inline: 0.8rem;
+  }
+
+  .toolbar-actions-main .toolbar-button.primary {
+    width: 100%;
+  }
+
+  .search-bar-shell.open,
+  .filter-panel-shell.open,
+  .icon-menu-shell.open {
+    width: 100%;
+  }
+
+  .search-bar-shell.open .search-bar-panel,
+  .filter-panel-shell.open .filter-panel-body,
+  .icon-menu-shell.open .icon-menu-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .filter-panel-shell.open .filter-panel-body {
+    max-height: 420px;
+  }
+
+  .filter-panel-shell .filter-panel-label {
+    display: none;
+  }
+
+  .icon-menu-panel .toolbar-button,
+  .filter-panel-body .toolbar-button {
+    width: 100%;
+  }
+
+  .settings-nav-shell {
+    position: static !important;
+  }
+
+  .settings-nav-list {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .settings-nav-list .btn {
+    flex: 0 0 auto;
+    min-width: 190px;
+    padding: 0.65rem 0.85rem;
+  }
+
+  .settings-nav-list .small {
+    display: none;
   }
 
   .toolbar-search-panel .toolbar-input,

@@ -384,7 +384,7 @@ const SettingsCenter = () => {
         <div className="col-12 col-xl-3">
           <div style={cardStyle} className="p-3 p-lg-4 sticky-top" data-settings-nav>
             <div className="text-uppercase small fw-bold mb-3 opacity-75">Sections</div>
-            <div className="d-grid gap-2">
+            <div className="settings-nav-list">
               {sectionTabs.map((section) => (
                 <button
                   key={section.key}

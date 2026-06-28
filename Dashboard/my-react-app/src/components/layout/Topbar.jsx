@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { HiOutlineChevronLeft, HiOutlineChevronRight } from 'react-icons/hi2';
+import { HiOutlineBars3, HiOutlineXMark } from 'react-icons/hi2';
 
 const Topbar = ({ sidebarOpen, title, userName, userRole, onToggleSidebar, notifications }) => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -21,7 +21,7 @@ const Topbar = ({ sidebarOpen, title, userName, userRole, onToggleSidebar, notif
         onClick={onToggleSidebar}
         title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
       >
-        {sidebarOpen ? <HiOutlineChevronLeft className="sidebar-toggle-icon" /> : <HiOutlineChevronRight className="sidebar-toggle-icon" />}
+        {sidebarOpen ? <HiOutlineXMark className="sidebar-toggle-icon" /> : <HiOutlineBars3 className="sidebar-toggle-icon" />}
       </button>
       <div className="dashboard-topbar-title">{title}</div>
       <div className="dashboard-topbar-meta">

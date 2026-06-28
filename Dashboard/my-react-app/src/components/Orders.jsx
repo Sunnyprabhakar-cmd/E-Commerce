@@ -24,6 +24,7 @@ import FilterPanel from './common/FilterPanel';
 import LoadingSpinner from './common/LoadingSpinner';
 import PageHeader from './common/PageHeader';
 import SearchBar from './common/SearchBar';
+import SortMenu from './common/SortMenu';
 import {
   addProductToCart as addOrderProductToCart,
   adminOrderAction,
@@ -55,6 +56,7 @@ const Orders = ({ onNavigate, userRole }) => {
   const [expandedGroups, setExpandedGroups] = useState({});
   const [showOrderSearch, setShowOrderSearch] = useState(false);
   const [showOrderFilters, setShowOrderFilters] = useState(false);
+  const [showOrderSortMenu, setShowOrderSortMenu] = useState(false);
   
 
   const adminView = userRole === 'admin';
@@ -595,19 +597,19 @@ const Orders = ({ onNavigate, userRole }) => {
 
       <AppCard className="mt-4 orders-toolbar-card" title="Controls" subtitle="Search, filter, export, and print orders with consistent spacing.">
         <div className="toolbar-actions toolbar-actions-main">
-          <button type="button" className="toolbar-button" onClick={fetchOrders}>
+          <button type="button" className="toolbar-button" onClick={fetchOrders} aria-label="Refresh orders" title="Refresh orders">
             <HiOutlineArrowPath />
             <span>Refresh</span>
           </button>
-          <button type="button" className="toolbar-button" onClick={exportOrdersToCSV}>
+          <button type="button" className="toolbar-button" onClick={exportOrdersToCSV} aria-label="Export orders to Excel" title="Export orders to Excel">
             <HiOutlineArrowDownTray />
-            <span>Export Excel</span>
+            <span>Excel</span>
           </button>
-          <button type="button" className="toolbar-button" onClick={exportOrdersToDoc}>
+          <button type="button" className="toolbar-button" onClick={exportOrdersToDoc} aria-label="Export orders to Word" title="Export orders to Word">
             <HiOutlineArrowDownTray />
-            <span>Export Word</span>
+            <span>Word</span>
           </button>
-          <button type="button" className="toolbar-button" onClick={printOrders}>
+          <button type="button" className="toolbar-button" onClick={printOrders} aria-label="Print orders" title="Print orders">
             <HiOutlinePrinter />
             <span>Print</span>
           </button>
@@ -619,6 +621,36 @@ const Orders = ({ onNavigate, userRole }) => {
             onToggle={() => setShowOrderSearch((prev) => !prev)}
             onChange={(e) => setCustomerFilter(e.target.value)}
           />
+
+          <SortMenu open={showOrderSortMenu} onToggle={setShowOrderSortMenu} label="Sort orders">
+            <select className="form-select toolbar-input" value={sortField} onChange={(e) => setSortField(e.target.value)}>
+              <option value="order_id">Order ID</option>
+              <option value="customer_id">Customer ID</option>
+              <option value="customer_name">Customer name</option>
+            </select>
+            <div className="toolbar-toggle-group">
+              <button
+                type="button"
+                className={`toolbar-button ${sortDirection === 'asc' ? 'active' : ''}`}
+                onClick={() => {
+                  setSortDirection('asc');
+                  setShowOrderSortMenu(false);
+                }}
+              >
+                Ascending
+              </button>
+              <button
+                type="button"
+                className={`toolbar-button ${sortDirection === 'desc' ? 'active' : ''}`}
+                onClick={() => {
+                  setSortDirection('desc');
+                  setShowOrderSortMenu(false);
+                }}
+              >
+                Descending
+              </button>
+            </div>
+          </SortMenu>
 
           <FilterPanel
             open={showOrderFilters}
@@ -640,11 +672,6 @@ const Orders = ({ onNavigate, userRole }) => {
               value={orderDateFilter}
               onChange={(e) => setOrderDateFilter(e.target.value)}
             />
-            <select className="form-select toolbar-input" value={sortField} onChange={(e) => setSortField(e.target.value)}>
-              <option value="order_id">Order ID</option>
-              <option value="customer_id">Customer ID</option>
-              <option value="customer_name">Customer name</option>
-            </select>
             <div className="toolbar-toggle-group">
               <button
                 type="button"

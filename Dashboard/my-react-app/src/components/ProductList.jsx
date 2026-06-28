@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { formatINR } from '../utils/currency';
 import { notify } from '../utils/notify';
-import { HiOutlineArrowPath, HiOutlinePlus, HiOutlineArrowsUpDown } from 'react-icons/hi2';
+import { HiOutlineArrowPath, HiOutlinePlus } from 'react-icons/hi2';
 import AppCard from './common/AppCard';
 import EmptyState from './common/EmptyState';
 import FilterPanel from './common/FilterPanel';
 import LoadingSpinner from './common/LoadingSpinner';
 import PageHeader from './common/PageHeader';
 import SearchBar from './common/SearchBar';
+import SortMenu from './common/SortMenu';
 import useProducts from '../hooks/useProducts';
 import { addProductToCart } from '../services/productService';
 
@@ -41,6 +42,7 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
   } = useProducts({ pageSize: 25, initialSortOrder: 'asc' });
   const [showSearch, setShowSearch] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   const handleDelete = async (id) => {
     if (!canManageProducts) {
@@ -81,17 +83,9 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
 
       <AppCard className="mt-4 product-toolbar-card" title="Controls" subtitle="Use search, filters, and sorting to narrow the product list.">
         <div className="toolbar-actions toolbar-actions-main">
-          <button type="button" className="toolbar-button" onClick={refresh}>
+          <button type="button" className="toolbar-button" onClick={refresh} aria-label="Refresh products" title="Refresh products">
             <HiOutlineArrowPath />
             <span>Refresh</span>
-          </button>
-          <button
-            type="button"
-            className={`toolbar-button icon-toggle ${sortOrder === 'asc' ? 'active' : ''}`}
-            onClick={() => handleSortChange(sortOrder === 'asc' ? 'desc' : 'asc')}
-          >
-            <HiOutlineArrowsUpDown />
-            <span>Sort by ID {sortOrder === 'asc' ? '↑' : '↓'}</span>
           </button>
           {canManageProducts && (
             <button type="button" className="toolbar-button primary" onClick={() => onEdit(null)}>
@@ -107,6 +101,15 @@ const ProductList = ({ onEdit, canManageProducts, onCartChange }) => {
             onChange={(e) => setSearchTerm(e.target.value)}
             onSearch={handleSearch}
           />
+
+          <SortMenu open={showSortMenu} onToggle={setShowSortMenu} label="Sort products">
+            <button type="button" className={`toolbar-button ${sortOrder === 'asc' ? 'active' : ''}`} onClick={() => { handleSortChange('asc'); setShowSortMenu(false); }}>
+              Sort by ID ascending
+            </button>
+            <button type="button" className={`toolbar-button ${sortOrder === 'desc' ? 'active' : ''}`} onClick={() => { handleSortChange('desc'); setShowSortMenu(false); }}>
+              Sort by ID descending
+            </button>
+          </SortMenu>
 
           <FilterPanel
             open={showFilters}
