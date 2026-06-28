@@ -4,6 +4,7 @@ import {
     fetchProductById,
     removeProduct,
 } from "../product_model/model.js";
+import db from "../database/database.js";
 import search from "../services/search.js";
 import filter from "../services/fileter.js";
 import update_product from "../services/update_product.js";
@@ -59,6 +60,7 @@ import {
     updateUserRole,
 } from "../services/system_settings.js";
 import { createAccessToken, createRefreshToken, hashRefreshToken, persistRefreshToken } from "../login&registration/login.js";
+import { hashPassword, matchPassword } from "../bcrypt/bcrypt.js";
 import jwt from 'jsonwebtoken';
 //Creating Product
 export const createProduct=(req,res)=>{
@@ -906,6 +908,59 @@ export const userRoleUpdate = async (req, res) => {
     }
 };
 
+export const changeAccountPassword = async (req, res) => {
+    try {
+        const userId = req.user?.id || null;
+        const currentPassword = String(req.body.currentPassword || '').trim();
+        const newPassword = String(req.body.newPassword || '').trim();
+
+        if (!userId) {
+            return res.status(401).json({ message: 'Authentication required' });
+        }
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ message: 'Current password and new password are required' });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({ message: 'New password must contain at least 8 characters' });
+        }
+
+        const userResult = await db.query(
+            `SELECT id, password FROM users WHERE CAST(id AS TEXT) = CAST($1 AS TEXT) LIMIT 1`,
+            [String(userId)]
+        );
+
+        const user = userResult.rows?.[0];
+        if (!user) {
+            return res.status(404).json({ message: 'Account not found' });
+        }
+
+        const passwordMatches = await matchPassword(currentPassword, user.password);
+        if (!passwordMatches) {
+            return res.status(400).json({ message: 'Current password is incorrect' });
+        }
+
+        const passwordHash = await hashPassword(newPassword);
+        await db.query(
+            `UPDATE users SET password = $1 WHERE CAST(id AS TEXT) = CAST($2 AS TEXT)`,
+            [passwordHash, String(userId)]
+        );
+
+        await db.query(
+            `UPDATE refresh_tokens
+             SET revoked_at = NOW()
+             WHERE CAST(user_id AS TEXT) = CAST($1 AS TEXT)
+               AND revoked_at IS NULL`,
+            [String(userId)]
+        );
+
+        return res.status(200).json({ message: 'Password updated successfully' });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
 export const userSessionList = async (req, res) => {
     try {
         const sessions = await listUserSessions(req.params.id || null);
@@ -1161,6 +1216,46 @@ export const balance_sub=async(req,res)=>{
 export const add_balancee=async(req,res)=>{
     try{
         const user_id = req.user.id || req.user.email;
+        const currentPassword = String(req.body.currentPassword || '').trim();
+        const newPassword = String(req.body.newPassword || '').trim();
+
+        if (currentPassword && newPassword) {
+            if (newPassword.length < 8) {
+                return res.status(400).json({ message: 'New password must contain at least 8 characters' });
+            }
+
+            const userResult = await db.query(
+                `SELECT id, password FROM users WHERE CAST(id AS TEXT) = CAST($1 AS TEXT) LIMIT 1`,
+                [String(user_id)]
+            );
+            const user = userResult.rows?.[0];
+
+            if (!user) {
+                return res.status(404).json({ message: 'Account not found' });
+            }
+
+            const passwordMatches = await matchPassword(currentPassword, user.password);
+            if (!passwordMatches) {
+                return res.status(400).json({ message: 'Current password is incorrect' });
+            }
+
+            const passwordHash = await hashPassword(newPassword);
+            await db.query(
+                `UPDATE users SET password = $1 WHERE CAST(id AS TEXT) = CAST($2 AS TEXT)`,
+                [passwordHash, String(user_id)]
+            );
+
+            await db.query(
+                `UPDATE refresh_tokens
+                 SET revoked_at = NOW()
+                 WHERE CAST(user_id AS TEXT) = CAST($1 AS TEXT)
+                   AND revoked_at IS NULL`,
+                [String(user_id)]
+            );
+
+            return res.status(200).json({ message: 'Password updated successfully' });
+        }
+
         const amount = req.body.price;
         const type = req.body.type;
         const reference_type = req.body.reference_type;

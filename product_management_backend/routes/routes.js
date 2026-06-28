@@ -54,6 +54,7 @@ import {
     activityLogList,
     reminderSettingsSave,
     supportSettingsSave,
+    changeAccountPassword,
 } from "../controller/controller.js";
 import  update_product  from "../services/update_product.js";
 import  registeration  from "../login&registration/register.js";
@@ -108,6 +109,7 @@ router.get("/admin/users/:id/sessions",auth,isAdmin,userSessionList);
 router.get("/admin/activity-logs",auth,isAdmin,activityLogList);
 router.post("/admin/reminders",auth,isAdmin,reminderSettingsSave);
 router.post("/admin/support-settings",auth,isAdmin,supportSettingsSave);
+router.post("/account/password",auth,changeAccountPassword);
 router.get("/admin/themes",auth,isAdmin,themeList);
 router.post("/admin/themes/:key",auth,isAdmin,themeSave);
 router.post("/admin/themes/:key/activate",auth,isAdmin,themeActivate);

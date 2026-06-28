@@ -4,6 +4,7 @@ import {
   HiOutlineCube,
   HiOutlineDocumentText,
   HiOutlineHome,
+  HiOutlineKey,
   HiOutlineShieldCheck,
   HiOutlineShoppingCart,
   HiOutlineSquares2X2,
@@ -20,6 +21,7 @@ const baseNavigation = [
   { view: 'settings/invoice-designer', label: 'Invoice Designer', icon: HiOutlineDocumentText, roles: ['admin'] },
   { view: 'stock', label: 'Stock', icon: HiOutlineBanknotes, roles: ['admin'] },
   { view: 'employees', label: 'Employees', icon: HiOutlineUsers, roles: ['admin'] },
+  { view: 'account', label: 'Account', icon: HiOutlineKey, roles: ['admin', 'user'] },
   { view: 'settings', label: 'Settings', icon: HiOutlineCog6Tooth, roles: ['admin'] },
 ];
 

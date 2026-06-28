@@ -10,6 +10,7 @@ import EmployeeManager from './EmployeeManager';
 import CustomInvoice from './CustomInvoice';
 import InvoiceDesigner from './InvoiceDesigner';
 import SettingsCenter from './SettingsCenter';
+import AccountSecurity from './AccountSecurity';
 import { fetchCartInfo } from '../services/cartService';
 import DashboardLayout from './layout/DashboardLayout';
 import { dashboardHomeView, getNavigationItems } from '../constants/navigation';
@@ -125,8 +126,8 @@ const Dashboard = () => {
   };
 
   const visibleViews = isAdmin
-    ? ['overview', 'list', 'form', 'orders', 'custom-invoice', 'settings/invoice-designer', 'stock', 'employees', 'settings']
-    : ['list', 'cart', 'orders'];
+    ? ['overview', 'list', 'form', 'orders', 'custom-invoice', 'settings/invoice-designer', 'stock', 'employees', 'account', 'settings']
+    : ['list', 'cart', 'orders', 'account'];
 
   useEffect(() => {
     if (!visibleViews.includes(currentView)) {
@@ -270,6 +271,8 @@ const Dashboard = () => {
         <StockManager />
       ) : currentView === 'employees' ? (
         <EmployeeManager mode="records" />
+      ) : currentView === 'account' ? (
+        <AccountSecurity session={session} />
       ) : currentView === 'settings' ? (
         <SettingsCenter />
       ) : null}

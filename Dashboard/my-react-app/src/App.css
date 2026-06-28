@@ -13,6 +13,7 @@
 
 .dashboard-shell {
   min-height: 100vh;
+  height: 100dvh;
   color: var(--brand-text);
   background:
     radial-gradient(circle at top left, rgba(139, 92, 246, 0.12), transparent 22%),
@@ -24,7 +25,8 @@
 .dashboard-layout {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .dashboard-layout.sidebar-closed {
@@ -132,7 +134,9 @@
 
 .dashboard-main {
   min-width: 0;
-  padding-top: 0.25rem;
+  height: 100dvh;
+  overflow-y: auto;
+  padding-top: 0;
 }
 
 .dashboard-topbar {
@@ -142,6 +146,7 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  min-height: 4.5rem;
   padding: 0.85rem 1rem;
   background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(14px);
@@ -5118,6 +5123,7 @@ body {
     flex-wrap: wrap;
     gap: 0.65rem;
     padding: 0.75rem 0.85rem;
+    min-height: 4.75rem;
   }
 
   .dashboard-topbar-title {
@@ -5133,6 +5139,7 @@ body {
   .dashboard-content {
     padding: 1rem;
   }
+
 }
 
 @media (max-width: 767px) {

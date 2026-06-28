@@ -46,7 +46,7 @@ const emptyLocation = {
 };
 
 const fetchLocationSuggestions = async (query) => {
-  if (!query || query.trim().length < 3) {
+  if (!query || query.trim().length < 8) {
     return [];
   }
 
@@ -138,7 +138,7 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
       } catch {
         setSuggestions([]);
       }
-    }, 300);
+    }, 300); 
 
     return () => {
       if (searchTimer.current) {
@@ -344,8 +344,21 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
         setShowConfirmPassword(false);
       }
     } catch (error) {
-      setMessage(error.response?.data?.message || 'Authentication failed. Please try again.', 'danger');
-    } finally {
+  console.log(error);
+
+  alert(JSON.stringify({
+    message: error.message,
+    status: error.response?.status,
+    data: error.response?.data
+  }));
+
+  setMessage(
+    error.response?.data?.message ||
+    error.message ||
+    "Authentication failed. Please try again.",
+    "danger"
+  );
+} finally {
       setIsSubmitting(false);
     }
   };
