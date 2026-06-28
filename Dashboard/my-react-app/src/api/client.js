@@ -6,6 +6,10 @@ const resolveBaseURL = () => {
     return configuredBaseURL.replace(/\/$/, '');
   }
 
+  if (import.meta.env.PROD) {
+    return 'https://e-commerce-4nit.onrender.com';
+  }
+
   if (typeof window !== 'undefined' && window.location?.hostname) {
     const { protocol, hostname } = window.location;
     return `${protocol}//${hostname}:3001`;
