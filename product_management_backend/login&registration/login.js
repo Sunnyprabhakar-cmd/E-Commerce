@@ -7,6 +7,8 @@ import crypto from "node:crypto";
 import { saveRefreshToken, loadEmployeeAccountByUserId } from "../services/admin_portal.js";
 env.config();
 
+const normalizePhone = (value = '') => String(value || '').replace(/[^\d+]/g, '');
+
 export const createAccessToken = (payload) => jwt.sign(payload, process.env.SECRET || "secretkey", { expiresIn: "15m" });
 
 export const createRefreshToken = (payload) => jwt.sign(payload, process.env.REFRESH_SECRET || process.env.SECRET || "secretkey", { expiresIn: "30d" });
@@ -24,7 +26,29 @@ export const hashLoginPassword = async (password) => hashPassword(password);
     try{
      const{email,password}=req.body;
      const identifier = String(email || '').trim();
-     const verification=await db.query("SELECT id,name,email,password,role FROM users WHERE email=$1 OR phone=$1",[identifier]);
+      if (!identifier || !password) {
+          return res.status(400).json({ message: "Email or phone and password are required" });
+      }
+
+      let verification;
+      if (identifier.includes('@')) {
+          verification = await db.query(
+                "SELECT id,name,email,password,role FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1",
+                [identifier]
+          );
+      } else {
+          const normalizedPhone = normalizePhone(identifier);
+          const phoneDigits = normalizedPhone.replace(/\D/g, '');
+          verification = await db.query(
+                `SELECT id,name,email,password,role
+                 FROM users
+                 WHERE phone = $1
+                     OR regexp_replace(phone, '[^0-9]', '', 'g') = $2
+                     OR right(regexp_replace(phone, '[^0-9]', '', 'g'), 10) = right($2, 10)
+                 LIMIT 1`,
+                [normalizedPhone, phoneDigits]
+          );
+      }
     
     if(verification.rows.length === 0){
         return res.status(401).json({message:"Invalid email or password"});

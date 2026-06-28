@@ -1,7 +1,21 @@
 import axios from 'axios';
 
+const resolveBaseURL = () => {
+  const configuredBaseURL = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (configuredBaseURL) {
+    return configuredBaseURL.replace(/\/$/, '');
+  }
+
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:3001`;
+  }
+
+  return 'http://localhost:3001';
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+  baseURL: resolveBaseURL()
 });
 
 api.interceptors.request.use((config) => {

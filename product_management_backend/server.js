@@ -6,12 +6,22 @@ import { ensureSystemSettingsSchema } from "./services/system_settings.js";
 import helmet from "helmet";
 import { globallimiter } from "./middleware/middleware.js";
 const app=express();
-const allowedOrigins = new Set(["http://localhost:5173", "http://localhost:5174","https://e-commerce-two-pi-81.vercel.app"]);
+const allowedOrigins = new Set([
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://e-commerce-two-pi-81.vercel.app",
+  ...(process.env.CORS_ORIGINS || process.env.FRONTEND_ORIGIN || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]);
+
+const isLocalDevOrigin = (origin = '') => /^https?:\/\/(localhost|127\.0\.0\.1|\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?$/i.test(origin);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  if (origin && allowedOrigins.has(origin)) {
+  if (origin && (allowedOrigins.has(origin) || (process.env.NODE_ENV !== 'production' && isLocalDevOrigin(origin)))) {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Vary", "Origin");
     res.header("Access-Control-Allow-Credentials", "true");

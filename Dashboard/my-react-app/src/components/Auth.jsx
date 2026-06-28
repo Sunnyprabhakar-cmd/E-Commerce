@@ -299,11 +299,12 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
 
     setIsSubmitting(true);
     try {
+      const loginIdentifier = formData.emailOrPhone.trim();
       const payload = isLogin
-        ? { email: formData.emailOrPhone, password: formData.password }
+        ? { email: loginIdentifier, password: formData.password }
         : {
             name: formData.name,
-            email: formData.emailOrPhone,
+            email: loginIdentifier,
             phone: formData.phone,
             password: formData.password,
             location: {
