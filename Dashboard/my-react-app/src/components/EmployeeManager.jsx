@@ -381,13 +381,13 @@ const EmployeeManager = ({ mode = 'records' }) => {
     const employeeId = employeeForm.employee_id || selectedEmployee?.employee_id;
     if (!employeeId || !employeeForm.employee_name) {
       setMessage('Employee id and name are required');
-      return;
+      return false;
     }
 
     const aadhaar = String(employeeForm.aadhar_card || '').replace(/\s+/g, '');
     if (aadhaar && !/^\d{12}$/.test(aadhaar)) {
       setMessage('Aadhaar must be exactly 12 numeric digits');
-      return;
+      return false;
     }
 
     const countryCode = employeeForm.phone_country_code || '+91';
@@ -395,11 +395,11 @@ const EmployeeManager = ({ mode = 'records' }) => {
     const phone = `${countryCode}${localPhone}`;
     if (countryCode === '+91' && !/^\+91\d{10}$/.test(phone)) {
       setMessage('Indian phone numbers must be 10 digits after +91');
-      return;
+      return false;
     }
     if (!/^\+\d{8,15}$/.test(phone)) {
       setMessage('Phone must include a valid country code');
-      return;
+      return false;
     }
 
     setSavingEmployee(true);
@@ -427,10 +427,12 @@ const EmployeeManager = ({ mode = 'records' }) => {
       setIsDrawerOpen(false);
       setSelectedEmployeeId(String(employeeId));
       await loadEmployees({ silent: true });
+      return true;
     } catch (error) {
       const errorMessage = error.response?.data?.message || 'Failed to save employee profile';
       setMessage(errorMessage);
       notify(errorMessage, 'danger');
+      return false;
     } finally {
       setSavingEmployee(false);
     }
@@ -504,15 +506,23 @@ const EmployeeManager = ({ mode = 'records' }) => {
   };
 
   const generateInvite = async () => {
-    if (!selectedEmployee) {
+    if (!selectedEmployee && !employeeForm.employee_id) {
       setMessage('Select an employee first');
       return;
     }
 
     try {
-      const response = await generateEmployeeInvite(selectedEmployee.id, {
-        phone: selectedEmployee.phone,
-        email: selectedEmployee.employee_email,
+      if (!selectedEmployee) {
+        const saved = await saveEmployee();
+        if (!saved) {
+          return;
+        }
+      }
+
+      const employeeId = String(employeeForm.employee_id || selectedEmployee?.id || selectedEmployee?.employee_id || '');
+      const response = await generateEmployeeInvite(employeeId, {
+        phone: employeeForm.phone || selectedEmployee?.phone,
+        email: selectedEmployee?.employee_email || '',
       });
       setInviteLink(response.data?.invite_link || '');
       setInviteMeta({

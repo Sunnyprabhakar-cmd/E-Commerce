@@ -3,13 +3,13 @@ import AppCard from './common/AppCard';
 import EmptyState from './common/EmptyState';
 import LoadingSpinner from './common/LoadingSpinner';
 import PageHeader from './common/PageHeader';
+import InvoiceDesigner from './InvoiceDesigner';
 import { notify } from '../utils/notify';
 import { formatINR } from '../utils/currency';
 import {
   buildInvoiceAssets,
   createGroupInvoiceMarkup,
   downloadPdfFromHtml,
-  openPreviewWindow,
 } from '../utils/invoiceUtils';
 import { fetchProducts, searchProducts } from '../services/productService';
 import { activateInvoiceTemplate, deleteInvoiceTemplate, fetchInvoiceTemplates, saveInvoiceTemplate } from '../services/systemService';
@@ -74,7 +74,13 @@ const CustomInvoice = () => {
   const [meta, setMeta] = useState(createEmptyMeta());
   const [items, setItems] = useState([createItem()]);
   const [preview, setPreview] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
   const [productMatches, setProductMatches] = useState({});
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('customInvoiceTab') || 'builder');
+
+  useEffect(() => {
+    localStorage.setItem('customInvoiceTab', activeTab);
+  }, [activeTab]);
 
   const loadTemplates = async () => {
     try {
@@ -227,11 +233,15 @@ const CustomInvoice = () => {
   };
 
   const handlePreview = async () => {
+    if (showPreview) {
+      setShowPreview(false);
+      return;
+    }
     setBusy(true);
     try {
       const html = await renderPreviewHtml();
-      await openPreviewWindow(html, `Invoice ${meta.invoiceNumber}`);
       setPreview(html);
+      setShowPreview(true);
     } catch (error) {
       notify(error.message || 'Unable to preview invoice', 'danger');
     } finally {
@@ -367,6 +377,33 @@ const CustomInvoice = () => {
     return <LoadingSpinner className="mt-5" label="Loading invoice designer..." />;
   }
 
+  const tabSwitcher = (
+    <div className="invoice-workspace-tabs" role="tablist" aria-label="Invoice workspace tabs">
+      <button type="button" className={`invoice-workspace-tab ${activeTab === 'builder' ? 'active' : ''}`} onClick={() => setActiveTab('builder')} role="tab" aria-selected={activeTab === 'builder'}>
+        Custom Invoice
+      </button>
+      <button type="button" className={`invoice-workspace-tab ${activeTab === 'designer' ? 'active' : ''}`} onClick={() => setActiveTab('designer')} role="tab" aria-selected={activeTab === 'designer'}>
+        Invoice Designer
+      </button>
+    </div>
+  );
+
+  if (activeTab === 'designer') {
+    return (
+      <div className="settings-center-shell invoice-designer-shell">
+        <PageHeader
+          kicker="Invoice"
+          title="Professional Invoice Designer"
+          description="Design logos, themes, typography, and invoice layout blocks from inside the Custom Invoice workspace."
+        />
+        {tabSwitcher}
+        <div className="mt-4">
+          <InvoiceDesigner />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="settings-center-shell invoice-designer-shell">
       <PageHeader
@@ -385,6 +422,8 @@ const CustomInvoice = () => {
           </div>
         )}
       />
+
+      {tabSwitcher}
 
       <div className="settings-layout-grid invoice-designer-grid">
         <div className="settings-content-shell">
@@ -491,7 +530,7 @@ const CustomInvoice = () => {
 
           <AppCard title="Template Actions" subtitle="Save template, duplicate it, activate it, export/import JSON, or delete it.">
             <div className="d-flex gap-2 flex-wrap">
-              <button type="button" className="toolbar-button primary" onClick={handlePreview} disabled={busy}>{busy ? 'Rendering...' : 'Preview'}</button>
+              <button type="button" className="toolbar-button primary" onClick={handlePreview} disabled={busy}>{busy ? 'Rendering...' : showPreview ? 'Hide Preview' : 'Preview Invoice'}</button>
               <button type="button" className="toolbar-button secondary" onClick={handleDownload} disabled={busy}>Export PDF</button>
               <button type="button" className="toolbar-button secondary" onClick={handleDuplicateTemplate}>Duplicate Template</button>
               <button type="button" className="toolbar-button secondary" onClick={exportTemplate}>Export Template</button>
@@ -506,71 +545,18 @@ const CustomInvoice = () => {
 
         <div className="settings-content-shell">
           <AppCard title="Live Preview" subtitle="A live commercial-style invoice preview built from actual line items.">
-            {items.length === 0 ? (
+            {!showPreview ? (
+              <EmptyState title="Preview hidden" description="Click Preview Invoice to show or hide the live invoice preview while editing." />
+            ) : items.length === 0 ? (
               <EmptyState title="Add items to preview" description="The invoice preview will render once you add at least one line item." />
             ) : (
               <div className="invoice-live-preview">
-                <div className="invoice-live-header">
-                  <div>
-                    <div className="toolbar-kicker">{meta.invoiceType}</div>
-                    <h2 className="h4 mb-1">{meta.invoiceNumber}</h2>
-                    <div className="text-muted">{meta.invoiceDate} • Due {meta.dueDate}</div>
-                  </div>
-                  <div className="text-end">
-                    <div className="fw-semibold">{meta.customerName || 'Customer'}</div>
-                    <div className="text-muted">{meta.customerPhone || 'No phone'}</div>
-                  </div>
-                </div>
-
-                <div className="invoice-live-customer">
-                  <div><span>GST</span><strong>{meta.customerGST || 'N/A'}</strong></div>
-                  <div><span>Reference</span><strong>{meta.referenceNumber || 'N/A'}</strong></div>
-                  <div><span>Payment</span><strong>{meta.paymentMethod}</strong></div>
-                  <div><span>Status</span><strong>{meta.paymentStatus}</strong></div>
-                </div>
-
                 <div className="table-responsive">
-                  <table className="table table-sm align-middle invoice-preview-table">
-                    <thead>
-                      <tr>
-                        <th>Product</th>
-                        <th>HSN</th>
-                        <th>Qty</th>
-                        <th>Rate</th>
-                        <th>GST</th>
-                        <th>Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item) => (
-                        <tr key={item.id}>
-                          <td>
-                            <strong>{item.productName || item.productSearch || 'Item'}</strong>
-                            <div className="text-muted small">{item.description || 'Description'}</div>
-                          </td>
-                          <td>{item.hsnCode || 'N/A'}</td>
-                          <td>{item.quantity} {item.unit}</td>
-                          <td>{formatINR(item.rate)}</td>
-                          <td>{item.gstPercent}%</td>
-                          <td>{formatINR(item.subtotal)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="invoice-live-summary">
-                  <div><span>Subtotal</span><strong>{formatINR(invoicePreview.subtotal)}</strong></div>
-                  <div><span>Shipping</span><strong>{formatINR(meta.shippingCharges)}</strong></div>
-                  <div><span>Packing</span><strong>{formatINR(meta.packingCharges)}</strong></div>
-                  <div><span>Previous Balance</span><strong>{formatINR(meta.previousBalance)}</strong></div>
-                  <div><span>Paid Amount</span><strong>{formatINR(meta.paidAmount)}</strong></div>
-                  <div><span>Grand Total</span><strong>{formatINR(invoicePreview.total)}</strong></div>
-                </div>
-
-                <div className="invoice-live-notes">
-                  <div><strong>Terms:</strong> {meta.terms}</div>
-                  <div><strong>Notes:</strong> {meta.notes || 'No additional notes'}</div>
+                  <iframe
+                    title={`Invoice preview ${meta.invoiceNumber}`}
+                    className="invoice-inline-preview-frame"
+                    srcDoc={preview || ''}
+                  />
                 </div>
               </div>
             )}

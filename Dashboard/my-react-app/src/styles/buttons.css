@@ -1,0 +1,46 @@
+.dashboard-shell .btn,
+.toolbar-button,
+.auth-submit-btn,
+.auth-mode-btn,
+.auth-link-button,
+.auth-password-toggle,
+.sidebar-toggle,
+.sidebar-link,
+.export-menu-content .toolbar-button {
+  border-radius: var(--erp-radius-sm);
+}
+
+.dashboard-shell .btn,
+.toolbar-button,
+.auth-submit-btn,
+.auth-mode-btn,
+.auth-link-button,
+.auth-password-toggle {
+  min-height: var(--erp-button-height);
+}
+
+.dashboard-shell .btn-primary,
+.dashboard-shell .btn-success,
+.toolbar-button.primary {
+  background: var(--erp-brand);
+  border-color: var(--erp-brand);
+}
+
+.dashboard-shell .btn-primary:hover,
+.dashboard-shell .btn-success:hover,
+.toolbar-button.primary:hover {
+  background: var(--erp-brand-strong);
+  border-color: var(--erp-brand-strong);
+}
+
+.dashboard-shell .btn-outline-primary,
+.toolbar-button.secondary {
+  color: var(--erp-brand);
+  border-color: rgba(79, 70, 229, 0.22);
+}
+
+.dashboard-shell .btn-outline-primary:hover,
+.toolbar-button.secondary:hover {
+  background: rgba(79, 70, 229, 0.08);
+  color: var(--erp-brand-strong);
+}

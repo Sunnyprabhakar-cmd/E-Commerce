@@ -13,6 +13,7 @@ import {
   HiOutlineUser,
   HiOutlineWifi,
 } from 'react-icons/hi2';
+import PasswordResetFlow from './PasswordResetFlow';
 import { login, register } from '../services/authService';
 import { notify } from '../utils/notify';
 
@@ -86,6 +87,7 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
   const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail));
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showResetFlow, setShowResetFlow] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [touched, setTouched] = useState({});
@@ -108,6 +110,7 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
   useEffect(() => {
     setIsLogin(initialMode !== 'register');
     setRegisterStep(1);
+    setShowResetFlow(false);
     setSubmitAttempted(false);
     setTouched({});
     setStatusMessage('');
@@ -169,6 +172,10 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
 
     return errors;
   }, [formData, isLogin, registerStep]);
+
+  if (showResetFlow) {
+    return <PasswordResetFlow onBack={() => setShowResetFlow(false)} />;
+  }
 
   const setMessage = (text, type = 'info') => {
     setStatusMessage(text);
@@ -416,7 +423,7 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
                 <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
                 <span>Remember me</span>
               </label>
-              <button type="button" className="auth-link-button" onClick={() => notify('Ask an administrator to resend your account invite if you cannot sign in.', 'info')}>Forgot password?</button>
+              <button type="button" className="auth-link-button" onClick={() => setShowResetFlow(true)}>Forgot password?</button>
             </div>
 
             <div className="auth-login-note">
@@ -520,7 +527,7 @@ const Auth = ({ onLogin, initialMode = 'login' }) => {
               {suggestions.length > 0 && (
                 <div className="auth-suggestion-list">
                   {suggestions.map((item) => (
-                    <button type="button" key={item.label} className="auth-suggestion-item" onClick={() => applySuggestion(item)}>
+                    <button type="button" key={item.label} className="auth-suggestion-item" onClick={() => applySuggestion(item)} title={item.label}>
                       <strong>{item.label}</strong>
                       <span>Autofill address fields</span>
                     </button>

@@ -1,0 +1,25 @@
+body {
+  font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-top: 0;
+}
+
+p {
+  margin-bottom: 0;
+}
+
+small,
+.text-muted,
+.dashboard-topbar-meta,
+.sidebar-session-role {
+  color: var(--erp-muted);
+}

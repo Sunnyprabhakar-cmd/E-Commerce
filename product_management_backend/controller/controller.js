@@ -11,6 +11,7 @@ import update_product from "../services/update_product.js";
 import { paginate } from "../utils/pagination.js";
 import { add_to_cart,cart_info,delete_info_cart,update_cart } from "../cart/cart.js";
 import { placeOrder,cancelOrder,orderDetails,fetchAllOrders,changeOrderStatus,updatePaymentProgress,updatePaymentProgressForGroup,cancelOrderGroup,changeOrderQuantity,applyOrderDiscount,fetchOrderActions } from "../orders/order.js";
+import { updateOrderPaymentStatus, updateOrderNotes } from "../orders/order.js";
 import {
     balance_check,
     diduct_balance,
@@ -62,6 +63,34 @@ import {
 import { createAccessToken, createRefreshToken, hashRefreshToken, persistRefreshToken } from "../login&registration/login.js";
 import { hashPassword, matchPassword } from "../bcrypt/bcrypt.js";
 import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
+
+let isPasswordResetSchemaReady = false;
+
+const hashToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+const ensurePasswordResetSchema = async () => {
+    if (isPasswordResetSchemaReady) {
+        return;
+    }
+
+    await db.query(`
+        CREATE TABLE IF NOT EXISTS password_reset_requests (
+            reset_token_hash TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            used_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    `);
+
+    await db.query("ALTER TABLE password_reset_requests ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''");
+    await db.query("ALTER TABLE password_reset_requests ADD COLUMN IF NOT EXISTS used_at TIMESTAMP");
+    await db.query("ALTER TABLE password_reset_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()");
+
+    isPasswordResetSchemaReady = true;
+};
 //Creating Product
 export const createProduct=(req,res)=>{
     try{
@@ -370,6 +399,11 @@ export const adminOrderAction = async (req, res) => {
         const requestedAction = action || action_type;
         const requestedAmount = amount_received ?? amountReceived;
         const requestedDiscount = discount_percentage ?? req.body.discountPercentage ?? req.body.discount;
+        const requestedStatus = req.body.status || req.body.order_status || req.body.nextStatus;
+        const requestedPaymentStatus = req.body.payment_status || req.body.paymentStatus;
+        const requestedNotes = req.body.notes || {};
+        const actionIp = req.ip || req.headers['x-forwarded-for'] || null;
+        const actionDevice = req.headers['user-agent'] || null;
 
         if (!requestedOrderId || !requestedAction) {
             return res.status(400).json({ message: "order_id and action are required" });
@@ -430,6 +464,57 @@ export const adminOrderAction = async (req, res) => {
 
         if (requestedAction === 'accept') {
             const reply = await changeOrderStatus(requestedOrderId, 'accepted', userId, userName, userPhone, userRole, 'Order accepted by admin');
+            if (reply?.message === 'order not found') {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+            return res.status(200).json(reply);
+        }
+
+        if (requestedAction === 'reject') {
+            const reason = req.body.reason || req.body.reject_reason || 'Rejected';
+            const reply = await changeOrderStatus(requestedOrderId, 'rejected', userId, userName, userPhone, userRole, `Order rejected: ${reason}`);
+            if (reply?.message === 'order not found') {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+            return res.status(200).json(reply);
+        }
+
+        if (requestedAction === 'update_status') {
+            if (!requestedStatus) {
+                return res.status(400).json({ message: 'status is required for update_status' });
+            }
+            const reply = await changeOrderStatus(requestedOrderId, requestedStatus, userId, userName, userPhone, userRole, `Order status changed to ${requestedStatus}`);
+            if (reply?.message === 'order not found') {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+            return res.status(200).json(reply);
+        }
+
+        if (requestedAction === 'update_payment_status') {
+            if (!requestedPaymentStatus) {
+                return res.status(400).json({ message: 'payment_status is required for update_payment_status' });
+            }
+            const reply = await updateOrderPaymentStatus(requestedOrderId, requestedPaymentStatus, userId, userName, userPhone, userRole, `Payment status changed to ${requestedPaymentStatus}`, JSON.stringify({ ip: actionIp, device: actionDevice }));
+            if (reply?.message === 'order not found') {
+                return res.status(404).json(reply);
+            }
+            if (reply?.error) {
+                return res.status(400).json(reply);
+            }
+            return res.status(200).json(reply);
+        }
+
+        if (requestedAction === 'update_notes') {
+            const reply = await updateOrderNotes(requestedOrderId, requestedNotes, userId, userName, userPhone, userRole);
             if (reply?.message === 'order not found') {
                 return res.status(404).json(reply);
             }
@@ -953,6 +1038,162 @@ export const changeAccountPassword = async (req, res) => {
              WHERE CAST(user_id AS TEXT) = CAST($1 AS TEXT)
                AND revoked_at IS NULL`,
             [String(userId)]
+        );
+
+        return res.status(200).json({ message: 'Password updated successfully' });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const requestPasswordReset = async (req, res) => {
+    try {
+        await ensurePasswordResetSchema();
+
+        const email = String(req.body.email || '').trim().toLowerCase();
+        if (!email) {
+            return res.status(400).json({ message: 'Email is required' });
+        }
+
+        const userResult = await db.query(
+            `SELECT id, email, name FROM users WHERE LOWER(CAST(email AS TEXT)) = $1 LIMIT 1`,
+            [email]
+        );
+
+        const user = userResult.rows?.[0];
+        if (!user) {
+            return res.status(404).json({ message: 'Account not found' });
+        }
+
+        const resetToken = crypto.randomUUID();
+        const resetTokenHash = hashToken(resetToken);
+        const expiresAt = new Date(Date.now() + 1000 * 60 * 30);
+
+        await db.query(
+            `DELETE FROM password_reset_requests WHERE CAST(user_id AS TEXT) = CAST($1 AS TEXT) AND used_at IS NULL`,
+            [String(user.id)]
+        );
+
+        await db.query(
+            `INSERT INTO password_reset_requests(reset_token_hash, user_id, email, expires_at)
+             VALUES ($1, $2, $3, $4)`,
+            [resetTokenHash, String(user.id), String(user.email || email), expiresAt]
+        );
+
+        const baseUrl = process.env.PUBLIC_APP_URL || 'http://localhost:5173';
+        const resetLink = `${baseUrl}/?reset=${resetToken}`;
+
+        return res.status(200).json({
+            message: 'Password reset link created',
+            resetToken,
+            resetLink,
+            reset_token: resetToken,
+            reset_link: resetLink,
+            expiresAt,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+            },
+        });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const verifyPasswordResetToken = async (req, res) => {
+    try {
+        await ensurePasswordResetSchema();
+
+        const token = String(req.params.token || '').trim();
+        if (!token) {
+            return res.status(400).json({ message: 'Reset token is required' });
+        }
+
+        const resetResult = await db.query(
+            `SELECT reset_token_hash, user_id, email, expires_at, used_at
+             FROM password_reset_requests
+             WHERE reset_token_hash = $1
+             LIMIT 1`,
+            [hashToken(token)]
+        );
+
+        const resetRequest = resetResult.rows?.[0];
+        if (!resetRequest) {
+            return res.status(404).json({ message: 'Invalid reset token' });
+        }
+
+        if (resetRequest.used_at) {
+            return res.status(400).json({ message: 'Reset token has already been used' });
+        }
+
+        if (new Date(resetRequest.expires_at).getTime() < Date.now()) {
+            return res.status(400).json({ message: 'Reset token has expired' });
+        }
+
+        return res.status(200).json({
+            message: 'Reset token verified',
+            email: resetRequest.email,
+            userId: resetRequest.user_id,
+        });
+    } catch (err) {
+        return res.status(400).json({ message: 'some error occured', error: err.message });
+    }
+};
+
+export const confirmPasswordReset = async (req, res) => {
+    try {
+        await ensurePasswordResetSchema();
+
+        const token = String(req.body.token || '').trim();
+        const password = String(req.body.password || '').trim();
+
+        if (!token || !password) {
+            return res.status(400).json({ message: 'Reset token and new password are required' });
+        }
+
+        if (password.length < 8) {
+            return res.status(400).json({ message: 'Password must contain at least 8 characters' });
+        }
+
+        const resetResult = await db.query(
+            `SELECT reset_token_hash, user_id, email, expires_at, used_at
+             FROM password_reset_requests
+             WHERE reset_token_hash = $1
+             LIMIT 1`,
+            [hashToken(token)]
+        );
+
+        const resetRequest = resetResult.rows?.[0];
+        if (!resetRequest) {
+            return res.status(404).json({ message: 'Invalid reset token' });
+        }
+
+        if (resetRequest.used_at) {
+            return res.status(400).json({ message: 'Reset token has already been used' });
+        }
+
+        if (new Date(resetRequest.expires_at).getTime() < Date.now()) {
+            return res.status(400).json({ message: 'Reset token has expired' });
+        }
+
+        const passwordHash = await hashPassword(password);
+        await db.query(
+            `UPDATE users SET password = $1 WHERE CAST(id AS TEXT) = CAST($2 AS TEXT)`,
+            [passwordHash, String(resetRequest.user_id)]
+        );
+
+        await db.query(
+            `UPDATE password_reset_requests SET used_at = NOW() WHERE reset_token_hash = $1`,
+            [hashToken(token)]
+        );
+
+        await db.query(
+            `UPDATE refresh_tokens
+             SET revoked_at = NOW()
+             WHERE CAST(user_id AS TEXT) = CAST($1 AS TEXT)
+               AND revoked_at IS NULL`,
+            [String(resetRequest.user_id)]
         );
 
         return res.status(200).json({ message: 'Password updated successfully' });

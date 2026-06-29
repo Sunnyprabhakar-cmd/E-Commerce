@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { HiOutlineMagnifyingGlass } from 'react-icons/hi2';
+import ToolbarDropdown from './ToolbarDropdown';
 
 const SearchBar = ({ open, value, placeholder, onToggle, onChange, onSearch, className = '' }) => {
   const timerRef = useRef(null);
@@ -33,12 +34,21 @@ const SearchBar = ({ open, value, placeholder, onToggle, onChange, onSearch, cla
   }, [onSearch, open, value]);
 
   return (
-    <div className={`search-bar-shell ${open ? 'open' : ''} ${className}`.trim()}>
-      <button type="button" className="toolbar-button icon-only search-toggle" onClick={onToggle} aria-expanded={open} aria-label={placeholder} title={placeholder}>
-        <HiOutlineMagnifyingGlass />
-        <span className="visually-hidden">Search</span>
-      </button>
-      <div className="search-bar-panel">
+    <ToolbarDropdown
+      open={open}
+      onToggle={onToggle}
+      label="Search"
+      icon={<HiOutlineMagnifyingGlass />}
+      className={`search-panel-shell ${open ? 'open' : ''} ${className}`.trim()}
+      panelClassName="toolbar-search-panel toolbar-panel-surface toolbar-popover-wide"
+      buttonClassName="search-toggle toolbar-search-trigger"
+      buttonVariant="secondary"
+      align="end"
+    >
+      <div className="toolbar-search-panel-inner">
+        <span className="toolbar-search-input-icon" aria-hidden="true">
+          <HiOutlineMagnifyingGlass />
+        </span>
         <input
           type="text"
           className="form-control toolbar-input search-bar-input"
@@ -55,7 +65,7 @@ const SearchBar = ({ open, value, placeholder, onToggle, onChange, onSearch, cla
           }}
         />
       </div>
-    </div>
+    </ToolbarDropdown>
   );
 };
 

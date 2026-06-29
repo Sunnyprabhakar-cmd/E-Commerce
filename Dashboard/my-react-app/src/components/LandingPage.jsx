@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   HiOutlineArrowRight,
   HiOutlineArrowTopRightOnSquare,
   HiOutlineBanknotes,
+  HiOutlineChevronLeft,
+  HiOutlineChevronRight,
   HiOutlineBellAlert,
   HiOutlineBuildingOffice2,
   HiOutlineChartBarSquare,
@@ -189,6 +191,8 @@ const LandingPage = ({ onLogin }) => {
   const [activeTab, setActiveTab] = useState('inventory');
   const [menuOpen, setMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [tabRailState, setTabRailState] = useState({ canLeft: false, canRight: false, scrolledOnce: false });
+  const tabRailRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -246,6 +250,32 @@ const LandingPage = ({ onLogin }) => {
     return () => window.removeEventListener('scroll', updateScrollState);
   }, []);
 
+  useEffect(() => {
+    const rail = tabRailRef.current;
+    if (!rail) {
+      return undefined;
+    }
+
+    const syncRailState = () => {
+      const canLeft = rail.scrollLeft > 4;
+      const canRight = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 4;
+      setTabRailState((current) => ({
+        canLeft,
+        canRight,
+        scrolledOnce: current.scrolledOnce || rail.scrollLeft > 4,
+      }));
+    };
+
+    syncRailState();
+    rail.addEventListener('scroll', syncRailState, { passive: true });
+    window.addEventListener('resize', syncRailState, { passive: true });
+
+    return () => {
+      rail.removeEventListener('scroll', syncRailState);
+      window.removeEventListener('resize', syncRailState);
+    };
+  }, []);
+
   const openAuth = (mode) => {
     setAuthMode(mode);
     setAuthOpen(true);
@@ -255,6 +285,22 @@ const LandingPage = ({ onLogin }) => {
   const watchDemo = () => {
     document.getElementById('screenshots')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setActiveTab('reports');
+  };
+
+  const scrollTabs = (direction) => {
+    const rail = tabRailRef.current;
+    if (!rail) {
+      return;
+    }
+
+    rail.scrollBy({ left: direction, behavior: 'smooth' });
+    setTabRailState((current) => ({ ...current, scrolledOnce: true }));
+  };
+
+  const selectTab = (tabId, element) => {
+    setActiveTab(tabId);
+    setTabRailState((current) => ({ ...current, scrolledOnce: true }));
+    element?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   };
 
   return (
@@ -388,12 +434,25 @@ const LandingPage = ({ onLogin }) => {
             <span className="landing-section-kicker">ERP screenshots</span>
             <h2>Multiple module views with tabs for faster evaluation.</h2>
           </div>
-          <div className="landing-tabs-row">
-            {screenshotTabs.map((tab) => (
-              <button key={tab.id} type="button" className={`landing-tab-button ${activeTab === tab.id ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
-                {tab.label}
-              </button>
-            ))}
+          <div className={`landing-tabs-shell ${tabRailState.scrolledOnce ? 'has-scrolled' : ''}`}>
+            <button type="button" className={`landing-tabs-chevron landing-tabs-chevron-left ${tabRailState.canLeft ? 'visible' : 'faded'}`} aria-label="Scroll tabs left" onClick={() => scrollTabs(-260)}>
+              <HiOutlineChevronLeft />
+            </button>
+            <div className="landing-tabs-row" ref={tabRailRef}>
+              {screenshotTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`landing-tab-button ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={(event) => selectTab(tab.id, event.currentTarget)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" className={`landing-tabs-chevron landing-tabs-chevron-right ${tabRailState.canRight ? 'visible' : 'faded'}`} aria-label="Scroll tabs right" onClick={() => scrollTabs(260)}>
+              <HiOutlineChevronRight />
+            </button>
           </div>
           <div className="landing-screenshot-panel">
             <div className="landing-screenshot-head">

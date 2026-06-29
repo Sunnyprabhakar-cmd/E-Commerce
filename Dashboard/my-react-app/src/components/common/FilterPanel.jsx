@@ -1,14 +1,21 @@
-import { HiOutlineAdjustmentsHorizontal } from 'react-icons/hi2';
+import { HiOutlineFunnel } from 'react-icons/hi2';
+import ToolbarDropdown from './ToolbarDropdown';
 
 const FilterPanel = ({ open, title = 'Filters', onToggle, children, onApply, onReset, className = '' }) => (
-  <section className={`filter-panel-shell ${open ? 'open' : ''} ${className}`.trim()}>
-    <button type="button" className="toolbar-button secondary filter-panel-toggle" onClick={onToggle} aria-expanded={open} aria-label={title} title={title}>
-      <HiOutlineAdjustmentsHorizontal />
-      <span className="filter-panel-label">{title}</span>
-    </button>
-    <div className="filter-panel-body">
+  <ToolbarDropdown
+    open={open}
+    onToggle={onToggle}
+    label={title}
+    icon={<HiOutlineFunnel />}
+    className={`filter-panel-shell ${open ? 'open' : ''} ${className}`.trim()}
+    panelClassName="toolbar-filter-panel toolbar-panel-surface toolbar-popover-wide"
+    buttonClassName="filter-panel-toggle"
+    buttonVariant="secondary"
+    align="end"
+  >
+    <div className="toolbar-filter-grid">
       {children}
-      <div className="filter-panel-actions">
+      <div className="filter-panel-actions toolbar-panel-actions">
         <button type="button" className="toolbar-button primary" onClick={onApply}>
           Apply
         </button>
@@ -17,7 +24,7 @@ const FilterPanel = ({ open, title = 'Filters', onToggle, children, onApply, onR
         </button>
       </div>
     </div>
-  </section>
+  </ToolbarDropdown>
 );
 
 export default FilterPanel;

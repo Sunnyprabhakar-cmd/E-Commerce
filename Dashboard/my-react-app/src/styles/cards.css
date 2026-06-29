@@ -1,0 +1,77 @@
+.dashboard-shell .card,
+.app-card-shell {
+  border: 0;
+  border-radius: var(--erp-radius-md);
+  background: var(--erp-surface);
+}
+
+.dashboard-shell .card.shadow-sm,
+.app-card-shell.shadow-sm {
+  box-shadow: var(--erp-shadow-sm) !important;
+}
+
+.app-card-header {
+  padding: var(--erp-space-5) var(--erp-space-5) 0;
+}
+
+.app-card-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-card-title {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.app-card-subtitle {
+  color: var(--erp-muted);
+}
+
+.app-card-body {
+  padding: var(--erp-space-5);
+}
+
+.app-card-collapse-button {
+  width: var(--erp-button-height);
+  height: var(--erp-button-height);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: var(--erp-radius-sm);
+  background: #fff;
+  color: var(--erp-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.app-card-collapse-button svg {
+  transition: transform 180ms ease;
+}
+
+.app-card-collapsible.is-collapsed .app-card-collapse-button svg {
+  transform: rotate(-90deg);
+}
+
+.app-card-collapsible.is-collapsed .app-card-header {
+  padding-bottom: var(--erp-space-5);
+}
+
+.stat-card-body {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.stat-card-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--erp-muted);
+}
+
+.stat-card-value {
+  font-size: 1.45rem;
+  font-weight: 900;
+}

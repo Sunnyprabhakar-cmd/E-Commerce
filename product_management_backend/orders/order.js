@@ -15,6 +15,7 @@ const ensureOrderSchema = async () => {
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_mode TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_reference TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_notes TEXT");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'pending'");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_due_at TIMESTAMP");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_group_id TEXT");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_number TEXT");
@@ -23,6 +24,11 @@ const ensureOrderSchema = async () => {
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC DEFAULT 0");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC DEFAULT 0");
     await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS payable_amount NUMERIC DEFAULT 0");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS admin_notes TEXT");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS operator_notes TEXT");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_notes TEXT");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_notes TEXT");
+    await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS internal_notes TEXT");
     await db.query("CREATE UNIQUE INDEX IF NOT EXISTS orders_invoice_number_unique_idx ON orders(invoice_number)");
     await db.query("UPDATE orders SET invoice_number = 'PI-' || LPAD(order_id::text, 6, '0') WHERE invoice_number IS NULL OR invoice_number = ''");
     await db.query(`
@@ -95,6 +101,7 @@ export const placeOrder = async (
         const amount_paid = is_paid ? payable_amount : 0;
         const remaining_amount = payable_amount - amount_paid;
         const status = is_paid ? 'paid' : 'pending';
+        const payment_status = is_paid ? 'paid' : 'pending';
         const final_payment_mode = is_paid ? (payment_mode || 'wallet') : payment_mode;
         const final_payment_reference = is_paid ? (payment_reference || 'wallet debit') : payment_reference;
         const final_payment_notes = is_paid
@@ -103,8 +110,8 @@ export const placeOrder = async (
 
         try {
             const created = await db.query(
-                "INSERT INTO orders(product_id,user_id,order_group_id,quantity,product_price,total_cost,discount_percentage,discount_amount,payable_amount,is_paid,status,payment_mode,payment_reference,payment_notes,payment_due_at,amount_paid,remaining_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING order_id",
-                [pid, user_id, order_group_id, qty, unitPrice, total_cost, discount_percentage, discount_amount, payable_amount, is_paid, status, final_payment_mode, final_payment_reference, final_payment_notes, payment_due_at, amount_paid, remaining_amount]
+                "INSERT INTO orders(product_id,user_id,order_group_id,quantity,product_price,total_cost,discount_percentage,discount_amount,payable_amount,is_paid,status,payment_status,payment_mode,payment_reference,payment_notes,payment_due_at,amount_paid,remaining_amount) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING order_id",
+                [pid, user_id, order_group_id, qty, unitPrice, total_cost, discount_percentage, discount_amount, payable_amount, is_paid, status, payment_status, final_payment_mode, final_payment_reference, final_payment_notes, payment_due_at, amount_paid, remaining_amount]
             );
             const orderId = created.rows?.[0]?.order_id ?? null;
             if (orderId) {
@@ -235,7 +242,7 @@ export const updatePaymentProgress = async (
             return { message: 'Invalid payment information' };
         }
         const selected = await db.query(
-            "SELECT order_id, total_cost, payable_amount, amount_paid, remaining_amount, status FROM orders WHERE order_id=$1 LIMIT 1",
+            "SELECT order_id, total_cost, payable_amount, amount_paid, remaining_amount, status, payment_status FROM orders WHERE order_id=$1 LIMIT 1",
             [order_id]
         );
         const orderRow = selected.rows?.[0];
@@ -253,11 +260,11 @@ export const updatePaymentProgress = async (
         }
         const remaining_amount = payable - newPaid;
         const is_paid = newPaid >= payable;
-        const status = is_paid ? 'paid' : 'partial';
+        const payment_status = is_paid ? 'paid' : 'partial';
 
         await db.query(
-            "UPDATE orders SET amount_paid=$1, remaining_amount=$2, is_paid=$3, status=$4, payment_mode=$5, payment_reference=$6, payment_notes=$7 WHERE order_id=$8",
-            [newPaid, remaining_amount, is_paid, status, payment_mode, payment_reference, payment_notes, order_id]
+            "UPDATE orders SET amount_paid=$1, remaining_amount=$2, is_paid=$3, payment_status=$4, payment_mode=$5, payment_reference=$6, payment_notes=$7 WHERE order_id=$8",
+            [newPaid, remaining_amount, is_paid, payment_status, payment_mode, payment_reference, payment_notes, order_id]
         );
 
         await recordOrderAction(
@@ -277,7 +284,8 @@ export const updatePaymentProgress = async (
             amount_paid: newPaid,
             remaining_amount,
             is_paid,
-            status,
+            status: orderRow.status,
+            payment_status,
         };
     } catch (err) {
         return { message: 'error occured while updating payment', error: err.message };
@@ -302,7 +310,7 @@ export const updatePaymentProgressForGroup = async (
         }
 
         const selected = await db.query(
-            "SELECT order_id, total_cost, amount_paid, remaining_amount, status FROM orders WHERE order_group_id=$1 AND status != 'cancelled' ORDER BY order_id ASC",
+            "SELECT order_id, total_cost, amount_paid, remaining_amount, status, payment_status, payable_amount FROM orders WHERE order_group_id=$1 AND status != 'cancelled' ORDER BY order_id ASC",
             [order_group_id]
         );
         const orders = selected.rows || [];
@@ -324,11 +332,11 @@ export const updatePaymentProgressForGroup = async (
             const newPaid = existingPaid + allocate;
             const newRemaining = Math.max(payable - newPaid, 0);
             const is_paid = newPaid >= payable;
-            const status = is_paid ? 'paid' : 'partial';
+            const payment_status = is_paid ? 'paid' : 'partial';
 
             await db.query(
-                "UPDATE orders SET amount_paid=$1, remaining_amount=$2, is_paid=$3, status=$4, payment_mode=$5, payment_reference=$6, payment_notes=$7 WHERE order_id=$8",
-                [newPaid, newRemaining, is_paid, status, payment_mode, payment_reference, payment_notes, o.order_id]
+                "UPDATE orders SET amount_paid=$1, remaining_amount=$2, is_paid=$3, payment_status=$4, payment_mode=$5, payment_reference=$6, payment_notes=$7 WHERE order_id=$8",
+                [newPaid, newRemaining, is_paid, payment_status, payment_mode, payment_reference, payment_notes, o.order_id]
             );
 
             await recordOrderAction(
@@ -342,7 +350,7 @@ export const updatePaymentProgressForGroup = async (
                 JSON.stringify({ amount_received: allocate, payment_mode, payment_reference, payment_notes })
             );
 
-            updated.push({ order_id: o.order_id, allocated: allocate, amount_paid: newPaid, remaining_amount: newRemaining, is_paid, status });
+            updated.push({ order_id: o.order_id, allocated: allocate, amount_paid: newPaid, remaining_amount: newRemaining, is_paid, payment_status });
             remainingToAllocate -= allocate;
         }
 
@@ -562,6 +570,87 @@ export const changeOrderStatus = async (order_id, status, actionByUserId, action
     }
 };
 
+export const updateOrderPaymentStatus = async (
+    order_id,
+    payment_status,
+    actionByUserId,
+    actionByUserName,
+    actionByUserPhone,
+    actionByRole = 'admin',
+    actionNote = null,
+    actionMetadata = null
+) => {
+    try {
+        if (!order_id || !payment_status) {
+            return { message: 'Invalid parameters' };
+        }
+        await ensureOrderSchema();
+        const selected = await db.query(
+            "SELECT order_id FROM orders WHERE order_id=$1 LIMIT 1",
+            [order_id]
+        );
+        if (selected.rows.length === 0) {
+            return { message: 'order not found' };
+        }
+        await db.query("UPDATE orders SET payment_status=$1 WHERE order_id=$2", [payment_status, order_id]);
+        await recordOrderAction(order_id, actionByUserId, actionByUserName, actionByUserPhone, actionByRole, 'payment_status_update', actionNote || `Payment status changed to ${payment_status}`, actionMetadata);
+        return { message: `order payment status ${payment_status}`, order_id, payment_status };
+    } catch (err) {
+        return { message: 'error occured while changing payment status', error: err.message };
+    }
+};
+
+export const updateOrderNotes = async (
+    order_id,
+    notes = {},
+    actionByUserId,
+    actionByUserName,
+    actionByUserPhone,
+    actionByRole = 'admin'
+) => {
+    try {
+        await ensureOrderSchema();
+        if (!order_id) {
+            return { message: 'Invalid parameters' };
+        }
+        const selected = await db.query(
+            "SELECT order_id FROM orders WHERE order_id=$1 LIMIT 1",
+            [order_id]
+        );
+        if (selected.rows.length === 0) {
+            return { message: 'order not found' };
+        }
+
+        const nextNotes = {
+            admin_notes: notes.admin_notes ?? null,
+            operator_notes: notes.operator_notes ?? null,
+            delivery_notes: notes.delivery_notes ?? null,
+            customer_notes: notes.customer_notes ?? null,
+            internal_notes: notes.internal_notes ?? null,
+        };
+
+        await db.query(
+            "UPDATE orders SET admin_notes=$1, operator_notes=$2, delivery_notes=$3, customer_notes=$4, internal_notes=$5 WHERE order_id=$6",
+            [nextNotes.admin_notes, nextNotes.operator_notes, nextNotes.delivery_notes, nextNotes.customer_notes, nextNotes.internal_notes, order_id]
+        );
+
+        await recordOrderAction(
+            order_id,
+            actionByUserId,
+            actionByUserName,
+            actionByUserPhone,
+            actionByRole,
+            'notes_update',
+            'Order notes updated',
+            JSON.stringify(nextNotes)
+        );
+
+        return { message: 'order notes updated', order_id, notes: nextNotes };
+    } catch (err) {
+        return { message: 'error occured while updating notes', error: err.message };
+    }
+};
+
 export const orderDetails = async (user_id) => {
     try {
         if (!user_id) {
@@ -579,6 +668,7 @@ export const orderDetails = async (user_id) => {
                     oa.action_type AS last_action_type,
                     oa.action_by_user_id AS last_action_by_user_id,
                     oa.action_by_user_name AS last_action_by_user_name,
+                    COALESCE(NULLIF(oa.action_by_user_name, ''), NULLIF(au.name, ''), 'Unknown User') AS handled_by_name,
                     oa.action_by_user_phone AS last_action_by_user_phone,
                     oa.action_by_role AS last_action_by_role,
                     oa.action_note AS last_action_note,
@@ -593,6 +683,7 @@ export const orderDetails = async (user_id) => {
                     ORDER BY created_at DESC
                     LIMIT 1
                 ) oa ON true
+                LEFT JOIN users au ON CAST(oa.action_by_user_id AS TEXT) = CAST(au.id AS TEXT)
                 WHERE o.user_id=$1`,
                 [user_id]
             );
@@ -617,6 +708,7 @@ export const fetchAllOrders = async () => {
                 oa.action_type AS last_action_type,
                 oa.action_by_user_id AS last_action_by_user_id,
                 oa.action_by_user_name AS last_action_by_user_name,
+                COALESCE(NULLIF(oa.action_by_user_name, ''), NULLIF(au.name, ''), 'Unknown User') AS handled_by_name,
                 oa.action_by_user_phone AS last_action_by_user_phone,
                 oa.action_by_role AS last_action_by_role,
                 oa.action_note AS last_action_note,
@@ -631,6 +723,7 @@ export const fetchAllOrders = async () => {
                 ORDER BY created_at DESC
                 LIMIT 1
             ) oa ON true
+            LEFT JOIN users au ON CAST(oa.action_by_user_id AS TEXT) = CAST(au.id AS TEXT)
             ORDER BY o.order_id DESC`
         );
         return { message: "admin order details fetched", orders: orderHistory.rows || [] };

@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { notify } from '../utils/notify';
 import { formatINR } from '../utils/currency';
+import Toolbar from './common/Toolbar';
+import ToolbarButton from './common/ToolbarButton';
+import OverflowMenu from './common/OverflowMenu';
 import {
   HiOutlineAdjustmentsHorizontal,
   HiOutlineArrowPath,
   HiOutlineUsers,
+  HiOutlineBuildingStorefront,
+  HiOutlineUserGroup,
 } from 'react-icons/hi2';
 import { createCustomerInvite as createCustomerInviteService, fetchAdminSummary } from '../services/adminService';
 
@@ -111,32 +116,55 @@ const AdminOverview = ({ onNavigate }) => {
   const totalGeneratedAfterDiscount = Number(summary?.total_generated_after_discount || 0);
   const totalDiscountAmount = Number(summary?.total_discount_amount || 0);
 
+  const desktopActions = (
+    <>
+      <ToolbarButton icon={<HiOutlineArrowPath />} onClick={() => fetchSummary(appliedRange)} label="Refresh summary">Refresh</ToolbarButton>
+      {onNavigate && <ToolbarButton onClick={() => onNavigate('stock')} label="Open Stock">Open Stock</ToolbarButton>}
+      {onNavigate && <ToolbarButton onClick={() => onNavigate('employee-records')} label="Open Employees">Open Employees</ToolbarButton>}
+      <ToolbarButton icon={<HiOutlineUsers />} onClick={createCustomerInvite} label="Generate Customer Invite">Generate Customer Invite</ToolbarButton>
+      <ToolbarButton
+        icon={<HiOutlineAdjustmentsHorizontal />}
+        variant="secondary"
+        active={showFilters}
+        onClick={() => setShowFilters((prev) => !prev)}
+        aria-expanded={showFilters}
+        label="Filter"
+      >
+        Filter
+      </ToolbarButton>
+    </>
+  );
+
+  const mobileActions = (
+    <>
+      <ToolbarButton icon={<HiOutlineArrowPath />} onClick={() => fetchSummary(appliedRange)} iconOnly label="Refresh summary" />
+      <OverflowMenu
+        open={showFilters}
+        onToggle={(nextOpen) => setShowFilters(nextOpen)}
+        label="More actions"
+        items={[
+          { label: 'Open Stock', icon: <HiOutlineBuildingStorefront />, onClick: () => onNavigate?.('stock') },
+          { label: 'Open Employees', icon: <HiOutlineUserGroup />, onClick: () => onNavigate?.('employee-records') },
+          { label: 'Generate Customer Invite', icon: <HiOutlineUsers />, onClick: createCustomerInvite },
+          {
+            label: showFilters ? 'Hide Filters' : 'Show Filters',
+            icon: <HiOutlineAdjustmentsHorizontal />,
+            onClick: () => setShowFilters((prev) => !prev),
+          },
+        ]}
+      />
+    </>
+  );
+
   return (
     <div className="container mt-4">
-      <div className="toolbar-shell mb-4">
-        <div className="toolbar-shell-top">
-          <div>
-            <div className="toolbar-kicker">Overview</div>
-            <h2 className="toolbar-title mb-0">Dashboard summary</h2>
-          </div>
-          <div className="toolbar-actions">
-            <button className="toolbar-button" onClick={() => fetchSummary(appliedRange)}>
-              <HiOutlineArrowPath />
-              <span>Refresh</span>
-            </button>
-            {onNavigate && <button className="toolbar-button" onClick={() => onNavigate('stock')}>Open Stock</button>}
-            {onNavigate && <button className="toolbar-button" onClick={() => onNavigate('employee-records')}>Open Employees</button>}
-            <button className="toolbar-button" onClick={createCustomerInvite}>
-              <HiOutlineUsers />
-              <span>Generate Customer Invite</span>
-            </button>
-            <button type="button" className={`toolbar-button icon-toggle ${showFilters ? 'active' : ''}`} onClick={() => setShowFilters((prev) => !prev)} aria-expanded={showFilters}>
-              <HiOutlineAdjustmentsHorizontal />
-              <span>Filter</span>
-            </button>
-          </div>
-        </div>
-
+      <Toolbar
+        kicker="Overview"
+        title="Dashboard summary"
+        actions={desktopActions}
+        mobileActions={mobileActions}
+        onClosePanels={() => setShowFilters(false)}
+      >
         <div className={`toolbar-reveal ${showFilters ? 'open' : ''}`}>
           <div className="toolbar-filter-panel overview-filter-panel">
             <div>
@@ -147,12 +175,11 @@ const AdminOverview = ({ onNavigate }) => {
               <label className="form-label">To</label>
               <input type="date" className="form-control toolbar-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
-            <button className="toolbar-button primary" onClick={applyCustomRange}>Apply</button>
-            <button className="toolbar-button" onClick={() => applyQuickRange('7d')}>Last 7 days</button>
-            <button className="toolbar-button" onClick={() => applyQuickRange('30d')}>Last 30 days</button>
-            <button className="toolbar-button" onClick={() => applyQuickRange('year')}>This year</button>
-            <button
-              className="toolbar-button"
+            <ToolbarButton variant="primary" onClick={applyCustomRange}>Apply</ToolbarButton>
+            <ToolbarButton onClick={() => applyQuickRange('7d')}>Last 7 days</ToolbarButton>
+            <ToolbarButton onClick={() => applyQuickRange('30d')}>Last 30 days</ToolbarButton>
+            <ToolbarButton onClick={() => applyQuickRange('year')}>This year</ToolbarButton>
+            <ToolbarButton
               onClick={() => {
                 setStartDate('');
                 setEndDate('');
@@ -160,10 +187,10 @@ const AdminOverview = ({ onNavigate }) => {
               }}
             >
               Clear filter
-            </button>
+            </ToolbarButton>
           </div>
         </div>
-      </div>
+      </Toolbar>
 
       {customerInviteLink && inviteVisible && (
         <div className="card border-0 shadow-sm mb-4">

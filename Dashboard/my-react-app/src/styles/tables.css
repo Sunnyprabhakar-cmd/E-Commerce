@@ -1,0 +1,13 @@
+.table-responsive {
+  border-radius: var(--erp-radius-md);
+}
+
+.dashboard-shell .table {
+  margin-bottom: 0;
+}
+
+.dashboard-shell .table thead th {
+  font-weight: 800;
+  color: var(--erp-muted);
+  border-bottom-color: rgba(148, 163, 184, 0.18);
+}

@@ -1,0 +1,21 @@
+.toolbar-input,
+.form-control,
+.form-select,
+textarea.form-control {
+  min-height: var(--erp-input-height);
+  border-radius: var(--erp-radius-sm);
+}
+
+.form-control,
+.form-select,
+textarea.form-control {
+  border-color: rgba(148, 163, 184, 0.26);
+}
+
+.toolbar-input:focus,
+.form-control:focus,
+.form-select:focus,
+textarea.form-control:focus {
+  box-shadow: 0 0 0 0.2rem rgba(79, 70, 229, 0.12);
+  border-color: rgba(79, 70, 229, 0.35);
+}

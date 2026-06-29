@@ -1,27 +1,40 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import Auth from './Auth';
-import ProductList from './ProductList';
-import ProductForm from './ProductForm';
-import Cart from './Cart';
-import Orders from './Orders';
-import AdminOverview from './AdminOverview';
-import StockManager from './StockManager';
-import EmployeeManager from './EmployeeManager';
-import CustomInvoice from './CustomInvoice';
-import InvoiceDesigner from './InvoiceDesigner';
-import SettingsCenter from './SettingsCenter';
-import AccountSecurity from './AccountSecurity';
 import { fetchCartInfo } from '../services/cartService';
 import DashboardLayout from './layout/DashboardLayout';
-import { dashboardHomeView, getNavigationItems } from '../constants/navigation';
+import { dashboardHomeView, dashboardViewLabelMap, getNavigationItems } from '../constants/navigation';
 import { refreshAuthToken } from '../services/authService';
 import LoadingSpinner from './common/LoadingSpinner';
+
+const ProductList = lazy(() => import('./ProductList'));
+const ProductForm = lazy(() => import('./ProductForm'));
+const Cart = lazy(() => import('./Cart'));
+const Orders = lazy(() => import('./Orders'));
+const OrderDetailsPage = lazy(() => import('./OrderDetailsPage'));
+const Purchases = lazy(() => import('./Purchases'));
+const AdminOverview = lazy(() => import('./AdminOverview'));
+const StockManager = lazy(() => import('./StockManager'));
+const EmployeeManager = lazy(() => import('./EmployeeManager'));
+const CustomInvoice = lazy(() => import('./CustomInvoice'));
+const SettingsCenter = lazy(() => import('./SettingsCenter'));
+const AccountSecurity = lazy(() => import('./AccountSecurity'));
 
 const getInitialSidebarState = () => {
   if (typeof window === 'undefined') {
     return true;
   }
   return window.innerWidth >= 1024;
+};
+
+const getInitialView = (role) => {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const requestedView = params.get('view');
+    if (requestedView === 'order-details') {
+      return 'order-details';
+    }
+  }
+  return localStorage.getItem('currentView') || dashboardHomeView(role);
 };
 
 const decodeToken = (token) => {
@@ -47,7 +60,7 @@ const isJwtExpired = (token) => {
   }
 };
 
-const Dashboard = () => {
+const Dashboard = ({ onLogoutSuccess }) => {
   const existingToken = localStorage.getItem('token');
   const [isLoggedIn, setIsLoggedIn] = useState(!!existingToken);
   const [authReady, setAuthReady] = useState(!existingToken);
@@ -55,7 +68,7 @@ const Dashboard = () => {
   const userRole = session?.role || null;
   const permissions = session?.permissions || {};
   const [currentView, setCurrentView] = useState(() => {
-    return localStorage.getItem('currentView') || dashboardHomeView(userRole);
+    return getInitialView(userRole);
   });
   const [editingProduct, setEditingProduct] = useState(null);
   const [cartCount, setCartCount] = useState(0);
@@ -82,7 +95,7 @@ const Dashboard = () => {
     localStorage.setItem('currentView', allowedInitialView);
   };
 
-  const handleLogout = () => {
+  const handleLogout = (showSuccess = false) => {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('currentView');
@@ -91,6 +104,10 @@ const Dashboard = () => {
     setCurrentView(dashboardHomeView(null));
     setEditingProduct(null);
     setCartCount(0);
+
+    if (showSuccess) {
+      onLogoutSuccess?.();
+    }
   };
 
   const refreshCartCount = async () => {
@@ -126,8 +143,8 @@ const Dashboard = () => {
   };
 
   const visibleViews = isAdmin
-    ? ['overview', 'list', 'form', 'orders', 'custom-invoice', 'settings/invoice-designer', 'stock', 'employees', 'account', 'settings']
-    : ['list', 'cart', 'orders', 'account'];
+    ? ['overview', 'list', 'form', 'orders', 'order-details', 'purchases', 'custom-invoice', 'stock', 'employees', 'account', 'settings']
+    : ['list', 'cart', 'orders', 'order-details', 'account'];
 
   useEffect(() => {
     if (!visibleViews.includes(currentView)) {
@@ -160,7 +177,7 @@ const Dashboard = () => {
 
       const refreshTokenValue = localStorage.getItem('refreshToken');
       if (!refreshTokenValue) {
-        handleLogout();
+        handleLogout(false);
         setAuthReady(true);
         return;
       }
@@ -181,7 +198,7 @@ const Dashboard = () => {
         }
       } catch {
         if (!cancelled) {
-          handleLogout();
+          handleLogout(false);
         }
       } finally {
         if (!cancelled) {
@@ -211,7 +228,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     const handleOpenInvoiceDesigner = () => {
-      handleViewChange('settings/invoice-designer');
+      localStorage.setItem('customInvoiceTab', 'designer');
+      handleViewChange('custom-invoice');
     };
 
     window.addEventListener('erp:open-invoice-designer', handleOpenInvoiceDesigner);
@@ -228,7 +246,9 @@ const Dashboard = () => {
     return <LoadingSpinner className="mt-5" label="Preparing your session..." />;
   }
 
-  const title = isAdmin ? 'Admin workspace' : 'Shopping workspace';
+  const title = currentView === 'order-details'
+    ? 'Order details workspace'
+    : dashboardViewLabelMap[currentView] || (isAdmin ? 'Admin workspace' : 'Shopping workspace');
 
   return (
     <DashboardLayout
@@ -239,42 +259,68 @@ const Dashboard = () => {
       userRole={userRole}
       title={title}
       onNavigate={handleViewChange}
-      onLogout={handleLogout}
+      onLogout={() => handleLogout(true)}
       onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
       onHome={() => handleViewChange(dashboardHomeView(userRole))}
     >
       {currentView === 'overview' ? (
-        <AdminOverview onNavigate={handleViewChange} />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading overview..." />}>
+          <AdminOverview onNavigate={handleViewChange} />
+        </Suspense>
       ) : currentView === 'list' ? (
-        <ProductList
-          onEdit={handleEdit}
-          canManageProducts={canManageProducts}
-          onCartChange={refreshCartCount}
-        />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading products..." />}>
+          <ProductList
+            onEdit={handleEdit}
+            canManageProducts={canManageProducts}
+            onCartChange={refreshCartCount}
+          />
+        </Suspense>
       ) : currentView === 'form' ? (
-        <ProductForm
-          key={editingProduct?.id || 'new'}
-          product={editingProduct}
-          canManageProducts={canManageProducts}
-          onSave={handleSave}
-          onCancel={handleCancel}
-        />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading product form..." />}>
+          <ProductForm
+            key={editingProduct?.id || 'new'}
+            product={editingProduct}
+            canManageProducts={canManageProducts}
+            onSave={handleSave}
+            onCancel={handleCancel}
+          />
+        </Suspense>
       ) : currentView === 'cart' ? (
-        <Cart onNavigate={handleViewChange} onCartChange={refreshCartCount} />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading cart..." />}>
+          <Cart onNavigate={handleViewChange} onCartChange={refreshCartCount} />
+        </Suspense>
       ) : currentView === 'orders' ? (
-        <Orders onNavigate={handleViewChange} userRole={userRole} />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading orders..." />}>
+          <Orders onNavigate={handleViewChange} userRole={userRole} />
+        </Suspense>
+      ) : currentView === 'order-details' ? (
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading order workspace..." />}>
+          <OrderDetailsPage onNavigate={handleViewChange} />
+        </Suspense>
+      ) : currentView === 'purchases' ? (
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading purchases..." />}>
+          <Purchases onNavigate={handleViewChange} userRole={userRole} session={session} />
+        </Suspense>
       ) : currentView === 'custom-invoice' ? (
-        <CustomInvoice />
-      ) : currentView === 'settings/invoice-designer' ? (
-        <InvoiceDesigner />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading invoice tools..." />}>
+          <CustomInvoice />
+        </Suspense>
       ) : currentView === 'stock' ? (
-        <StockManager />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading stock manager..." />}>
+          <StockManager />
+        </Suspense>
       ) : currentView === 'employees' ? (
-        <EmployeeManager mode="records" />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading employees..." />}>
+          <EmployeeManager mode="records" />
+        </Suspense>
       ) : currentView === 'account' ? (
-        <AccountSecurity session={session} />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading account security..." />}>
+          <AccountSecurity session={session} />
+        </Suspense>
       ) : currentView === 'settings' ? (
-        <SettingsCenter />
+        <Suspense fallback={<LoadingSpinner className="mt-4" label="Loading settings..." />}>
+          <SettingsCenter />
+        </Suspense>
       ) : null}
     </DashboardLayout>
   );

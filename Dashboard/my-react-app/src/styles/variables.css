@@ -1,0 +1,53 @@
+:root {
+  --erp-bg: #f4f6fb;
+  --erp-surface: #ffffff;
+  --erp-surface-elevated: #fbfbff;
+  --erp-text: #1f2937;
+  --erp-muted: #64748b;
+  --erp-sidebar: #0f172a;
+  --erp-sidebar-soft: #1e293b;
+  --erp-brand: #4f46e5;
+  --erp-brand-strong: #3730a3;
+  --erp-accent: #8b5cf6;
+  --erp-accent-soft: #d8b4fe;
+  --erp-success: #16a34a;
+  --erp-warning: #d97706;
+  --erp-danger: #dc2626;
+  --erp-shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.08);
+  --erp-shadow-md: 0 16px 36px rgba(15, 23, 42, 0.12);
+  --erp-shadow-lg: 0 20px 48px rgba(15, 23, 42, 0.16);
+  --erp-shadow-toolbar-hover: 0 14px 28px rgba(15, 23, 42, 0.12);
+  --erp-shadow-toolbar-active: 0 16px 30px rgba(79, 70, 229, 0.18);
+  --erp-radius-sm: 12px;
+  --erp-radius-md: 16px;
+  --erp-radius-lg: 20px;
+  --erp-space-1: 4px;
+  --erp-space-2: 8px;
+  --erp-space-3: 12px;
+  --erp-space-4: 16px;
+  --erp-space-5: 20px;
+  --erp-space-6: 24px;
+  --erp-space-8: 32px;
+  --erp-space-12: 48px;
+  --erp-input-height: 48px;
+  --erp-button-height: 44px;
+  --erp-toolbar-icon-size: 20px;
+  --erp-toolbar-icon-size-tablet: 18px;
+  --erp-toolbar-gap: 8px;
+  --erp-toolbar-padding-x: 16px;
+  --erp-toolbar-padding-y: 12px;
+  --erp-toolbar-radius: 12px;
+  --erp-toolbar-transition: 200ms;
+
+  /* Legacy aliases retained while feature-specific styles are migrated. */
+  --brand-red: var(--erp-brand);
+  --brand-red-dark: var(--erp-brand-strong);
+  --brand-gold: var(--erp-accent-soft);
+  --brand-cream: #f8f7ff;
+  --brand-surface: var(--erp-surface);
+  --brand-text: var(--erp-text);
+  --brand-sidebar: var(--erp-sidebar);
+  --brand-sidebar-soft: var(--erp-sidebar-soft);
+  --brand-accent: var(--erp-accent);
+  --brand-muted: var(--erp-muted);
+}

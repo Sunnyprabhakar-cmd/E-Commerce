@@ -512,13 +512,13 @@ const SettingsCenter = () => {
 };
 
 const SectionCard = ({ title, subtitle, actions, children }) => (
-  <section style={cardStyle} className="p-4 p-lg-5">
+  <section style={cardStyle} className="p-4 p-lg-5 settings-section-card">
     <div className="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-start mb-4">
       <div>
         <h3 className="h4 mb-1">{title}</h3>
         <p className="text-muted mb-0">{subtitle}</p>
       </div>
-      {actions}
+      <div className="settings-section-actions">{actions}</div>
     </div>
     {children}
   </section>
@@ -1186,7 +1186,7 @@ const InvoiceDesignerSection = ({ templates, templateDraft, onTemplateDraftChang
   <div className="d-grid gap-4">
     <SectionCard
       title="Invoice designer"
-      subtitle="Manage templates here. The full invoice preview lives in the dedicated Invoice Designer page, not in the general settings hub."
+      subtitle="Manage templates here. The full designer now lives inside the Custom Invoice workspace."
       actions={<button className="btn btn-dark" onClick={onSaveTemplate} disabled={saving}>{saving ? 'Saving...' : 'Save template'}</button>}
     >
       <div className="row g-3 mb-4">
@@ -1203,7 +1203,7 @@ const InvoiceDesignerSection = ({ templates, templateDraft, onTemplateDraftChang
       </div>
       <div className="d-flex flex-wrap gap-2">
         <button type="button" className="btn btn-outline-dark" onClick={() => window.dispatchEvent(new CustomEvent('erp:open-invoice-designer'))}>
-          Open invoice designer
+          Open Custom Invoice designer
         </button>
       </div>
     </SectionCard>

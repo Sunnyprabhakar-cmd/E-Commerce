@@ -1,0 +1,39 @@
+.dashboard-shell {
+  min-height: 100vh;
+  height: 100dvh;
+  color: var(--erp-text);
+  background:
+    radial-gradient(circle at top left, rgba(139, 92, 246, 0.12), transparent 22%),
+    radial-gradient(circle at top right, rgba(79, 70, 229, 0.08), transparent 20%),
+    linear-gradient(180deg, #fbfbff 0%, var(--erp-bg) 100%);
+}
+
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.dashboard-layout.sidebar-closed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.dashboard-main {
+  min-width: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  padding-top: 0;
+}
+
+.dashboard-content {
+  padding: var(--erp-space-5);
+}
+
+.dashboard-layout.sidebar-closed .dashboard-content {
+  padding-left: var(--erp-space-5);
+}
+
+.page-container {
+  width: min(100%, 1440px);
+}

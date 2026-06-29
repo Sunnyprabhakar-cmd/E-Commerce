@@ -38,6 +38,9 @@ import {
     employeeSalaryHistory,
     salarySummary,
     refreshAuthToken,
+    requestPasswordReset,
+    verifyPasswordResetToken,
+    confirmPasswordReset,
     systemSettingsList,
     systemSettingsSave,
     themeList,
@@ -69,6 +72,9 @@ const router=express.Router();
 router.post("/register",authlimiter,registeration);
 router.post("/login",authlimiter,login_user);
 router.post("/auth/refresh",refreshAuthToken);
+router.post("/auth/password-reset/request", authlimiter, requestPasswordReset);
+router.get("/auth/password-reset/:token", verifyPasswordResetToken);
+router.post("/auth/password-reset/confirm", authlimiter, confirmPasswordReset);
 router.get("/employee-invites/:token",employeeInviteInspect);
 router.get("/customer-invites/:token",customerInviteInspect);
 router.post("/employee-invites/:token/activate",authlimiter,employeeInviteActivate);

@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { notify } from '../utils/notify';
 import { formatINR } from '../utils/currency';
+import Toolbar from './common/Toolbar';
+import ToolbarButton from './common/ToolbarButton';
+import OverflowMenu from './common/OverflowMenu';
 import {
   buildInvoiceAssets,
   createGroupInvoiceMarkup,
@@ -16,13 +19,17 @@ import {
 import {
   HiOutlineArrowDownTray,
   HiOutlineArrowPath,
+  HiOutlineAdjustmentsHorizontal,
+  HiOutlineArrowsUpDown,
   HiOutlinePrinter,
 } from 'react-icons/hi2';
 import EmptyState from './common/EmptyState';
 import AppCard from './common/AppCard';
+import ExportMenu from './common/ExportMenu';
 import FilterPanel from './common/FilterPanel';
 import LoadingSpinner from './common/LoadingSpinner';
 import PageHeader from './common/PageHeader';
+import PageContainer from './common/PageContainer';
 import SearchBar from './common/SearchBar';
 import SortMenu from './common/SortMenu';
 import {
@@ -34,6 +41,49 @@ import {
 } from '../services/orderService';
 
 const getOrderKey = (order) => order.order_id || order.tracking_id || `${order.product_id}-${order.user_id}`;
+
+const getDisplayName = (value) => {
+  const text = String(value || '').trim();
+  if (!text || /^\d+$/.test(text)) {
+    return 'Unknown User';
+  }
+  return text;
+};
+
+const getHandledByName = (order) => getDisplayName(order.handled_by_name || order.last_action_by_user_name);
+
+const getRoleCapabilities = (role) => {
+  const normalized = String(role || '').toLowerCase();
+  return {
+    canView: true,
+    canEditQuantity: normalized === 'admin' || normalized === 'manager',
+    canApplyDiscount: normalized === 'admin' || normalized === 'manager',
+    canEditPayment: normalized === 'admin' || normalized === 'accountant' || normalized === 'manager',
+    canViewHistory: normalized === 'admin' || normalized === 'manager' || normalized === 'accountant',
+    canCancel: normalized === 'admin' || normalized === 'manager',
+    canManageInvoices: normalized === 'admin' || normalized === 'accountant' || normalized === 'manager',
+  };
+};
+
+const buildOrderDraft = (order) => ({
+  quantity: String(Number(order.quantity || 1)),
+  discountMode: 'percent',
+  discountValue: String(Number(order.discount_percentage || 0)),
+  paymentAmount: '',
+  paymentMode: order.payment_mode || 'cash',
+  showHistory: false,
+});
+
+const getOrderStockLimit = (order) => Number(order.stock_quantity ?? order.available_stock ?? order.stock ?? order.product_stock ?? 0);
+
+const getStatusChipClass = (status) => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'paid') return 'order-status-chip is-paid';
+  if (normalized === 'cancelled') return 'order-status-chip is-cancelled';
+  if (normalized === 'processing') return 'order-status-chip is-processing';
+  if (normalized === 'partial' || normalized === 'partial paid') return 'order-status-chip is-partial';
+  return 'order-status-chip is-pending';
+};
 
 const Orders = ({ onNavigate, userRole }) => {
   const [orders, setOrders] = useState([]);
@@ -57,10 +107,177 @@ const Orders = ({ onNavigate, userRole }) => {
   const [showOrderSearch, setShowOrderSearch] = useState(false);
   const [showOrderFilters, setShowOrderFilters] = useState(false);
   const [showOrderSortMenu, setShowOrderSortMenu] = useState(false);
+  const [showOrderExportMenu, setShowOrderExportMenu] = useState(false);
+  const [showOrderOverflowMenu, setShowOrderOverflowMenu] = useState(false);
+  const [orderDrafts, setOrderDrafts] = useState({});
+  const [activeCell, setActiveCell] = useState(null);
   
 
   const adminView = userRole === 'admin';
+  const roleCapabilities = getRoleCapabilities(userRole);
   const fetchEndpoint = adminView ? '/orders' : '/orderDetail';
+
+  const closeOrderPopups = () => {
+    setShowOrderSearch(false);
+    setShowOrderFilters(false);
+    setShowOrderSortMenu(false);
+    setShowOrderExportMenu(false);
+    setShowOrderOverflowMenu(false);
+  };
+
+  const openOrderPopup = (popupName) => {
+    setShowOrderSearch(popupName === 'search');
+    setShowOrderFilters(popupName === 'filter');
+    setShowOrderSortMenu(popupName === 'sort');
+    setShowOrderExportMenu(popupName === 'export');
+    setShowOrderOverflowMenu(popupName === 'overflow');
+  };
+
+  const toggleOrderPopup = (popupName) => (nextOpen) => {
+    if (nextOpen) {
+      openOrderPopup(popupName);
+      return;
+    }
+    closeOrderPopups();
+  };
+
+  const openOrderPopupFromMenu = (popupName) => {
+    window.setTimeout(() => openOrderPopup(popupName), 0);
+  };
+
+  const updateOrderDraft = (orderKey, field, value) => {
+    setOrderDrafts((prev) => ({
+      ...prev,
+      [orderKey]: {
+        ...prev[orderKey],
+        [field]: value,
+      },
+    }));
+  };
+
+  const startCellEdit = (order, field) => {
+    const key = getOrderKey(order);
+    setActiveCell({ key, field });
+    setOrderDrafts((prev) => ({
+      ...prev,
+      [key]: prev[key] || buildOrderDraft(order),
+    }));
+  };
+
+  const closeCellEdit = (order) => {
+    const key = getOrderKey(order);
+    setActiveCell(null);
+    setOrderDrafts((prev) => ({
+      ...prev,
+      [key]: buildOrderDraft(order),
+    }));
+  };
+
+  const ensureRowDraft = (order) => {
+    const key = getOrderKey(order);
+    return orderDrafts[key] || buildOrderDraft(order);
+  };
+
+  const applyQuantityDraft = async (order) => {
+    const key = getOrderKey(order);
+    const draft = ensureRowDraft(order);
+    const desired = Math.max(1, Number(draft.quantity || 1));
+    const current = Math.max(1, Number(order.quantity || 1));
+    const stockLimit = getOrderStockLimit(order);
+    if (stockLimit > 0 && desired > stockLimit) {
+      setMessage(`Quantity cannot exceed stock (${stockLimit})`);
+      return;
+    }
+    const delta = desired - current;
+    if (delta === 0) {
+      return;
+    }
+    const steps = Math.abs(delta);
+    const direction = delta > 0 ? 1 : -1;
+    for (let index = 0; index < steps; index += 1) {
+      await handleAdjustQuantity(order, direction);
+    }
+    setOrderDrafts((prev) => ({
+      ...prev,
+      [key]: { ...draft, quantity: String(desired) },
+    }));
+  };
+
+  const handleQuantityKeyDown = async (event, order) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      await applyQuantityDraft(order);
+      setActiveCell(null);
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeCellEdit(order);
+    }
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      const currentValue = Math.max(1, Number(ensureRowDraft(order).quantity || 1));
+      const stockLimit = getOrderStockLimit(order);
+      const nextValue = event.key === 'ArrowUp' ? currentValue + 1 : Math.max(1, currentValue - 1);
+      if (stockLimit > 0 && nextValue > stockLimit) {
+        setMessage(`Quantity cannot exceed stock (${stockLimit})`);
+        return;
+      }
+      updateOrderDraft(getOrderKey(order), 'quantity', String(nextValue));
+    }
+  };
+
+  const commitDiscountDraft = async (order) => {
+    const key = getOrderKey(order);
+    const draft = ensureRowDraft(order);
+    const value = Number(draft.discountValue || 0);
+    if (draft.discountMode === 'percent') {
+      if (value < 0 || value > 100) {
+        setMessage('Enter a valid discount percentage between 0 and 100');
+        return;
+      }
+      await handleApplyOrderDiscount(order, value);
+    } else {
+      const currentTotal = Number(order.total_cost || 0);
+      if (value < 0 || value > currentTotal) {
+        setMessage('Enter a valid fixed discount');
+        return;
+      }
+      const percent = currentTotal > 0 ? Math.min(100, Number(((value / currentTotal) * 100).toFixed(2))) : 0;
+      await handleApplyOrderDiscount(order, percent);
+    }
+    setActiveCell(null);
+    setOrderDrafts((prev) => ({
+      ...prev,
+      [key]: { ...draft, discountValue: String(value) },
+    }));
+  };
+
+  const commitPaymentDraft = async (order) => {
+    const key = getOrderKey(order);
+    const draft = ensureRowDraft(order);
+    const amount = Number(draft.paymentAmount || 0);
+    if (!amount || amount <= 0) {
+      setMessage('Enter a valid payment amount');
+      return;
+    }
+    try {
+      await adminOrderAction({
+        order_id: order.order_id || order.tracking_id || order.order_group_id || order.groupId,
+        action: 'collect_payment',
+        amount_received: amount,
+        payment_mode: draft.paymentMode || 'cash',
+        payment_reference: null,
+        payment_notes: `Inline payment update for order ${order.order_id || order.tracking_id}`,
+      });
+      setMessage('Payment updated successfully');
+      setOrderDrafts((prev) => ({ ...prev, [key]: { ...draft, paymentAmount: '' } }));
+      setActiveCell(null);
+      fetchOrders();
+    } catch (error) {
+      const errorMsg = error.response?.data?.message || 'Error recording payment';
+      setMessage(errorMsg);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -391,7 +608,6 @@ const Orders = ({ onNavigate, userRole }) => {
     const rows = filteredOrders.map((order) => {
       const displayRemaining = getDisplayRemaining(order);
       return [ 
-        order.order_group_id || order.order_id || order.tracking_id || '',
         getInvoiceNumber(order),
         order.order_id || order.tracking_id || '',
         getOrderProductLabel(order),
@@ -406,7 +622,7 @@ const Orders = ({ onNavigate, userRole }) => {
         Number(order.amount_paid || 0).toFixed(2),
         displayRemaining.toFixed(2),
         order.payment_mode || '',
-        order.last_action_by_user_name || order.last_action_by_user_phone || '',
+        getHandledByName(order),
       ];
     });
     const csvContent = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -433,7 +649,7 @@ const Orders = ({ onNavigate, userRole }) => {
           <td>${Number(order.amount_paid || 0).toFixed(2)}</td>
           <td>${displayRemaining.toFixed(2)}</td>
           <td>${order.payment_mode || ''}</td>
-          <td>${order.last_action_by_user_name || order.last_action_by_user_phone || ''}</td>
+          <td>${getHandledByName(order)}</td>
         </tr>`;
     }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Order Export</title></head><body><table border="1" cellpadding="5" cellspacing="0"><thead><tr><th>Order Group ID</th><th>Invoice Number</th><th>Order ID</th><th>Product Name</th><th>Product ID</th><th>Customer</th><th>Customer ID</th><th>Quantity</th><th>Unit Price</th><th>Total Cost</th><th>Status</th><th>Payment Status</th><th>Amount Paid</th><th>Remaining</th><th>Payment Mode</th><th>Handled By</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
@@ -443,6 +659,33 @@ const Orders = ({ onNavigate, userRole }) => {
   const printOrders = () => {
     window.print();
   };
+
+  const exportMenuItems = [
+    {
+      label: 'Excel / CSV',
+      icon: <HiOutlineArrowDownTray />,
+      onClick: () => {
+        setShowOrderExportMenu(false);
+        exportOrdersToCSV();
+      },
+    },
+    {
+      label: 'Word',
+      icon: <HiOutlineArrowDownTray />,
+      onClick: () => {
+        setShowOrderExportMenu(false);
+        exportOrdersToDoc();
+      },
+    },
+    {
+      label: 'Print',
+      icon: <HiOutlinePrinter />,
+      onClick: () => {
+        setShowOrderExportMenu(false);
+        printOrders();
+      },
+    },
+  ];
 
   useEffect(() => {
     fetchOrders();
@@ -533,7 +776,7 @@ const Orders = ({ onNavigate, userRole }) => {
           paymentModes: new Set(),
           customerName: order.customer_name || order.customer_email || 'N/A',
           customerId: order.user_id || order.customer_id || 'N/A',
-          lastActionBy: order.last_action_by_user_name || order.last_action_by_user_phone || 'N/A',
+          lastActionBy: getHandledByName(order),
         };
       }
 
@@ -571,6 +814,17 @@ const Orders = ({ onNavigate, userRole }) => {
     setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const openOrderDetailsTab = (groupId) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', 'order-details');
+    url.searchParams.set('groupId', String(groupId));
+    window.history.pushState({}, '', url.toString());
+    onNavigate?.('order-details');
+  };
+
   useEffect(() => {
     const nextExpanded = {};
     orderGroups.forEach((group) => {
@@ -587,78 +841,110 @@ const Orders = ({ onNavigate, userRole }) => {
     return <LoadingSpinner className="mt-5" label="Loading orders..." />;
   }
 
+  const desktopActions = (
+    <>
+      <ToolbarButton icon={<HiOutlineArrowPath />} onClick={fetchOrders} label="Refresh orders">Refresh</ToolbarButton>
+      <ExportMenu
+        open={showOrderExportMenu}
+        onToggle={toggleOrderPopup('export')}
+        label="Export orders"
+        items={exportMenuItems}
+        className="orders-export-menu"
+      />
+      <SearchBar
+        open={showOrderSearch}
+        value={customerFilter}
+        placeholder="Search customer..."
+        onToggle={toggleOrderPopup('search')}
+        onChange={(e) => setCustomerFilter(e.target.value)}
+      />
+      <SortMenu open={showOrderSortMenu} onToggle={toggleOrderPopup('sort')} label="Sort orders">
+        <select className="form-select toolbar-input" value={sortField} onChange={(e) => setSortField(e.target.value)}>
+          <option value="order_id">Order ID</option>
+          <option value="customer_id">Customer ID</option>
+          <option value="customer_name">Customer name</option>
+        </select>
+        <div className="toolbar-toggle-group">
+          <ToolbarButton active={sortDirection === 'asc'} onClick={() => {
+            setSortDirection('asc');
+            setShowOrderSortMenu(false);
+          }}>
+            Ascending
+          </ToolbarButton>
+          <ToolbarButton active={sortDirection === 'desc'} onClick={() => {
+            setSortDirection('desc');
+            setShowOrderSortMenu(false);
+          }}>
+            Descending
+          </ToolbarButton>
+        </div>
+      </SortMenu>
+      <FilterPanel open={showOrderFilters} onToggle={toggleOrderPopup('filter')} onApply={closeOrderPopups} onReset={resetOrderFilters} title="Filter">
+        <select className="form-select toolbar-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="all">All payments</option>
+          <option value="paid">Paid</option>
+          <option value="partial">Partial Paid</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <input
+          type="date"
+          className="form-control toolbar-input"
+          value={orderDateFilter}
+          onChange={(e) => setOrderDateFilter(e.target.value)}
+        />
+        <div className="toolbar-toggle-group">
+          <ToolbarButton active={orderScope === 'active'} onClick={() => setOrderScope('active')}>Active</ToolbarButton>
+          <ToolbarButton active={orderScope === 'cancelled'} onClick={() => setOrderScope('cancelled')}>Cancelled</ToolbarButton>
+        </div>
+      </FilterPanel>
+    </>
+  );
+
+  const mobileActions = (
+    <>
+      <SearchBar
+        open={showOrderSearch}
+        value={customerFilter}
+        placeholder="Search customer..."
+        onToggle={toggleOrderPopup('search')}
+        onChange={(e) => setCustomerFilter(e.target.value)}
+      />
+      <OverflowMenu
+        open={showOrderOverflowMenu}
+        onToggle={toggleOrderPopup('overflow')}
+        label="More actions"
+        items={[
+          { label: 'Refresh', icon: <HiOutlineArrowPath />, onClick: () => { closeOrderPopups(); fetchOrders(); } },
+          { label: 'Export', icon: <HiOutlineArrowDownTray />, onClick: () => openOrderPopupFromMenu('export') },
+          { label: 'Sort', icon: <HiOutlineArrowsUpDown />, onClick: () => openOrderPopupFromMenu('sort') },
+          { label: 'Filter', icon: <HiOutlineAdjustmentsHorizontal />, onClick: () => openOrderPopupFromMenu('filter') },
+        ]}
+      />
+    </>
+  );
+
   return (
-    <div className="container mt-5">
+    <PageContainer className="mt-5">
       <PageHeader
         kicker="Orders"
         title="Order management"
         description="Review orders, manage payments, print invoices, and export records from one place."
       />
 
-      <AppCard className="mt-4 orders-toolbar-card" title="Controls" subtitle="Search, filter, export, and print orders with consistent spacing.">
-        <div className="toolbar-actions toolbar-actions-main">
-          <button type="button" className="toolbar-button" onClick={fetchOrders} aria-label="Refresh orders" title="Refresh orders">
-            <HiOutlineArrowPath />
-            <span>Refresh</span>
-          </button>
-          <button type="button" className="toolbar-button" onClick={exportOrdersToCSV} aria-label="Export orders to Excel" title="Export orders to Excel">
-            <HiOutlineArrowDownTray />
-            <span>Excel</span>
-          </button>
-          <button type="button" className="toolbar-button" onClick={exportOrdersToDoc} aria-label="Export orders to Word" title="Export orders to Word">
-            <HiOutlineArrowDownTray />
-            <span>Word</span>
-          </button>
-          <button type="button" className="toolbar-button" onClick={printOrders} aria-label="Print orders" title="Print orders">
-            <HiOutlinePrinter />
-            <span>Print</span>
-          </button>
-
-          <SearchBar
-            open={showOrderSearch}
-            value={customerFilter}
-            placeholder="Search customer..."
-            onToggle={() => setShowOrderSearch((prev) => !prev)}
-            onChange={(e) => setCustomerFilter(e.target.value)}
-          />
-
-          <SortMenu open={showOrderSortMenu} onToggle={setShowOrderSortMenu} label="Sort orders">
-            <select className="form-select toolbar-input" value={sortField} onChange={(e) => setSortField(e.target.value)}>
-              <option value="order_id">Order ID</option>
-              <option value="customer_id">Customer ID</option>
-              <option value="customer_name">Customer name</option>
-            </select>
-            <div className="toolbar-toggle-group">
-              <button
-                type="button"
-                className={`toolbar-button ${sortDirection === 'asc' ? 'active' : ''}`}
-                onClick={() => {
-                  setSortDirection('asc');
-                  setShowOrderSortMenu(false);
-                }}
-              >
-                Ascending
-              </button>
-              <button
-                type="button"
-                className={`toolbar-button ${sortDirection === 'desc' ? 'active' : ''}`}
-                onClick={() => {
-                  setSortDirection('desc');
-                  setShowOrderSortMenu(false);
-                }}
-              >
-                Descending
-              </button>
-            </div>
-          </SortMenu>
-
-          <FilterPanel
-            open={showOrderFilters}
-            onToggle={() => setShowOrderFilters((prev) => !prev)}
-            onApply={() => setShowOrderFilters(false)}
-            onReset={resetOrderFilters}
-            title="Filter"
-          >
+      <Toolbar
+        className="mt-4 orders-toolbar-card"
+        kicker="Controls"
+        title="Order workspace"
+        description="Search, filter, export, and print orders with consistent spacing."
+        actions={desktopActions}
+        mobileActions={mobileActions}
+        onSearchShortcut={() => toggleOrderPopup('search')(!showOrderSearch)}
+        onRefreshShortcut={() => { closeOrderPopups(); fetchOrders(); }}
+        onClosePanels={closeOrderPopups}
+      >
+        <div className={`toolbar-reveal ${showOrderFilters ? 'open' : ''}`}>
+          <div className="toolbar-filter-panel order-filter-panel">
             <select className="form-select toolbar-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="all">All payments</option>
               <option value="paid">Paid</option>
@@ -688,9 +974,13 @@ const Orders = ({ onNavigate, userRole }) => {
                 Cancelled
               </button>
             </div>
-          </FilterPanel>
+            <div className="toolbar-panel-actions">
+              <ToolbarButton variant="primary" onClick={() => setShowOrderFilters(false)}>Apply</ToolbarButton>
+              <ToolbarButton onClick={resetOrderFilters}>Reset</ToolbarButton>
+            </div>
+          </div>
         </div>
-      </AppCard>
+      </Toolbar>
 
       {adminView && orderScope === 'cancelled' && (
         <div className="alert alert-warning">You are viewing cancelled orders only.</div>
@@ -701,6 +991,134 @@ const Orders = ({ onNavigate, userRole }) => {
       {filteredOrders.length === 0 ? (
         <EmptyState title="No orders found" description="Try widening your search or switching the filter scope." />
       ) : (
+        <>
+        <div className="orders-mobile-stack d-lg-none">
+          {orderGroups.map((group) => {
+            const groupStatus = group.orders.length > 1 ? 'Grouped' : group.orders[0]?.status || 'N/A';
+            const previewOrder = group.orders[0] || {};
+
+            return (
+              <article key={group.groupId} className="orders-mobile-card">
+                <div className="orders-mobile-head">
+                  <div>
+                    <div className="orders-mobile-kicker">Order Group</div>
+                    <h3>{group.groupId}</h3>
+                    <p>{group.customerName} · {group.customerId}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="toolbar-button compact"
+                    onClick={() => openOrderDetailsTab(group.groupId)}
+                  >
+                    Show Items
+                  </button>
+                </div>
+
+                <div className="orders-mobile-grid">
+                  <div><span>Items</span><strong>{group.orders.length}</strong></div>
+                  <div><span>Status</span><strong>{groupStatus}</strong></div>
+                  <div><span>Payment</span><strong>{group.paymentStatus}</strong></div>
+                  <div><span>Total</span><strong>{formatINR(group.totalCost)}</strong></div>
+                </div>
+
+                <div className="orders-mobile-actions">
+                  <button type="button" className="toolbar-button secondary compact" onClick={() => handleGenerateGroupInvoice(group)}>Invoice</button>
+                  <button type="button" className="toolbar-button secondary compact" onClick={() => handleDownloadGroupInvoice(group)}>PDF</button>
+                  {adminView ? (
+                    <>
+                      {group.totalRemaining > 0 ? (
+                        <button type="button" className="toolbar-button primary compact" onClick={() => handleCollectPaymentGroup(group)}>Collect</button>
+                      ) : null}
+                      <button type="button" className="toolbar-button compact" onClick={() => handleCancelGroup(group)}>Cancel</button>
+                    </>
+                  ) : group.orders.some((o) => o.status === 'cancelled') ? (
+                    <button type="button" className="toolbar-button primary compact" onClick={() => handleReorderGroup(group)}>Reorder</button>
+                  ) : (
+                    <button type="button" className="toolbar-button danger compact" onClick={() => handleCancelGroup(group)}>Cancel</button>
+                  )}
+                </div>
+
+                {expandedGroups[group.groupId] && (
+                  <div className="orders-mobile-items">
+                    {group.orders.map((order) => {
+                      const rowKey = getOrderKey(order);
+                      const displayRemaining = getDisplayRemaining(order);
+                      const displayPaid = Number(order.amount_paid || 0);
+                      const orderPaymentStatus = getPaymentStatus(order);
+
+                      return (
+                        <div key={`${order.groupId || order.order_id}-${order.product_id || 'no-product'}`} className="orders-mobile-item">
+                          <div className="orders-mobile-item-top">
+                            <strong>{getOrderProductLabel(order)}</strong>
+                            <span>{order.order_id || order.tracking_id || 'N/A'}</span>
+                          </div>
+                          <div className="orders-mobile-item-grid">
+                            <div><span>Qty</span><strong>{order.quantity}</strong></div>
+                            <div><span>Price</span><strong>{formatINR(Number(order.product_price || 0))}</strong></div>
+                            <div><span>Paid</span><strong>{formatINR(displayPaid)}</strong></div>
+                            <div><span>Remaining</span><strong>{formatINR(displayRemaining)}</strong></div>
+                            <div><span>Status</span><strong>{order.status || 'N/A'}</strong></div>
+                            {adminView && <div><span>Payment</span><strong>{orderPaymentStatus}</strong></div>}
+                          </div>
+                          <div className="orders-mobile-actions orders-mobile-actions-tight">
+                            <button type="button" className="toolbar-button secondary compact" onClick={() => handleGenerateInvoice(order)}>Invoice</button>
+                            <button type="button" className="toolbar-button secondary compact" onClick={() => handleDownloadInvoice(order)}>PDF</button>
+                            {adminView ? (
+                              <>
+                                <button type="button" className="toolbar-button compact" onClick={() => handleAdjustQuantity(order, -1)}>- Qty</button>
+                                <button type="button" className="toolbar-button compact" onClick={() => handleAdjustQuantity(order, 1)}>+ Qty</button>
+                                {displayRemaining > 0 && order.status !== 'cancelled' && (
+                                  <button type="button" className="toolbar-button primary compact" onClick={() => handleCollectPayment(order)}>Record</button>
+                                )}
+                              </>
+                            ) : order.status === 'cancelled' ? (
+                              <button type="button" className="toolbar-button primary compact" onClick={() => handleReorderOrder(order)}>Reorder</button>
+                            ) : (
+                              <button type="button" className="toolbar-button danger compact" onClick={() => handleCancelOrder(order)}>Cancel</button>
+                            )}
+                          </div>
+                          {adminView && (
+                            <div className="orders-mobile-inline-form">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="form-control form-control-sm"
+                                placeholder="Amount"
+                                value={paymentInputs[rowKey]?.amount || ''}
+                                onChange={(e) => setPaymentInput(rowKey, 'amount', e.target.value)}
+                              />
+                              <select
+                                className="form-select form-select-sm"
+                                value={paymentInputs[rowKey]?.mode || 'cash'}
+                                onChange={(e) => setPaymentInput(rowKey, 'mode', e.target.value)}
+                              >
+                                <option value="cash">Cash</option>
+                                <option value="wallet">Wallet</option>
+                                <option value="upi">UPI</option>
+                                <option value="card">Card</option>
+                              </select>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="1"
+                                className="form-control form-control-sm"
+                                placeholder="Discount %"
+                                value={paymentInputs[rowKey]?.discount || ''}
+                                onChange={(e) => setPaymentInput(rowKey, 'discount', e.target.value)}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
         <div className="table-responsive">
           <table className="table table-striped">
             <thead>
@@ -735,12 +1153,9 @@ const Orders = ({ onNavigate, userRole }) => {
                       <td>
                         <button
                           className="btn btn-sm btn-outline-primary"
-                          onClick={() => {
-                            const willExpand = !expandedGroups[group.groupId];
-                            toggleGroupExpansion(group.groupId);
-                          }}
+                          onClick={() => openOrderDetailsTab(group.groupId)}
                         >
-                          {expandedGroups[group.groupId] ? 'Hide items' : 'Show items'}
+                          Show Items
                         </button>
                         <div className="mt-1 small text-muted">{group.groupId}</div>
                       </td>
@@ -838,6 +1253,14 @@ const Orders = ({ onNavigate, userRole }) => {
                       const displayRemaining = getDisplayRemaining(order);
                       const displayPaid = Number(order.amount_paid || 0);
                       const orderPaymentStatus = getPaymentStatus(order);
+                      const draft = ensureRowDraft(order);
+                      const stockLimit = getOrderStockLimit(order);
+                      const quantityControlsDisabled = !roleCapabilities.canEditQuantity || order.status === 'cancelled';
+                      const discountControlsDisabled = !roleCapabilities.canApplyDiscount || order.status === 'cancelled';
+                      const paymentControlsDisabled = !roleCapabilities.canEditPayment || order.status === 'cancelled';
+                      const editingQuantity = activeCell?.key === rowKey && activeCell?.field === 'quantity';
+                      const editingDiscount = activeCell?.key === rowKey && activeCell?.field === 'discount';
+                      const editingPayment = activeCell?.key === rowKey && activeCell?.field === 'payment';
 
                       return (
                         <tr key={`${order.groupId || order.order_id}-${order.product_id || 'no-product'}`}>
@@ -846,154 +1269,195 @@ const Orders = ({ onNavigate, userRole }) => {
                           {adminView && <td>{order.user_id || order.customer_id || 'N/A'}</td>}
                           <td>{getOrderProductLabel(order)}</td>
                           <td>{order.product_id}</td>
-                          <td>{order.quantity}</td>
+                          <td className={`order-editable-cell ${editingQuantity ? 'is-editing' : ''}`} onClick={() => !quantityControlsDisabled && startCellEdit(order, 'quantity')}>
+                            {editingQuantity ? (
+                              <div className="order-cell-editor order-cell-editor-quantity">
+                                <button
+                                  type="button"
+                                  className="toolbar-button compact"
+                                  disabled={quantityControlsDisabled || Number(draft.quantity || 1) <= 1}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    updateOrderDraft(rowKey, 'quantity', String(Math.max(1, Number(draft.quantity || 1) - 1)));
+                                  }}
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={stockLimit || undefined}
+                                  step="1"
+                                  inputMode="numeric"
+                                  className="form-control form-control-sm order-quantity-input"
+                                  value={draft.quantity}
+                                  disabled={quantityControlsDisabled}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onWheel={(e) => e.currentTarget.blur()}
+                                  onChange={(e) => updateOrderDraft(rowKey, 'quantity', e.target.value.replace(/[^0-9]/g, '') || '1')}
+                                  onKeyDown={(e) => handleQuantityKeyDown(e, order)}
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  className="toolbar-button compact"
+                                  disabled={quantityControlsDisabled || (stockLimit > 0 && Number(draft.quantity || 1) >= stockLimit)}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    updateOrderDraft(rowKey, 'quantity', String(Number(draft.quantity || 1) + 1));
+                                  }}
+                                >
+                                  +
+                                </button>
+                                <button type="button" className="toolbar-button compact" onClick={(e) => { e.stopPropagation(); applyQuantityDraft(order); }}>Save</button>
+                                <button type="button" className="toolbar-button compact" onClick={(e) => { e.stopPropagation(); closeCellEdit(order); }}>Cancel</button>
+                              </div>
+                            ) : (
+                              <button type="button" className="order-edit-display" disabled={quantityControlsDisabled}>
+                                {order.quantity}
+                              </button>
+                            )}
+                          </td>
                           <td>{formatINR(Number(order.product_price || 0))}</td>
-                          {adminView && <td>{Number(order.discount_amount || 0).toFixed(2)} ({Number(order.discount_percentage || 0).toFixed(0)}%)</td>}
-                          {adminView && <td>{formatINR(Number(order.payable_amount ?? (order.total_cost || 0)))}</td>}
-                          <td>{formatINR(Number(order.total_cost || 0))}</td>
-                          <td>{order.status || 'N/A'}</td>
-                          {adminView && <td>{orderPaymentStatus}</td>}
-                            {adminView && <td>{formatINR(displayPaid)}</td>}
-                            {adminView && <td>{formatINR(displayRemaining)}</td>}
-                            {adminView && <td>{order.payment_mode || (displayRemaining > 0 ? 'unpaid' : 'N/A')}</td>}
-                            {adminView && <td>{order.last_action_by_user_name || order.last_action_by_user_phone || order.last_action_by_user_id || 'N/A'}</td>}
                           {adminView && (
-                            <td>
-                              <div className="d-flex flex-column gap-2">
-                                <div className="d-flex gap-1 flex-wrap">
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-outline-secondary"
-                                    onClick={() => handleAdjustQuantity(order, -1)}
+                            <td className={`order-editable-cell ${editingDiscount ? 'is-editing' : ''}`} onClick={() => !discountControlsDisabled && startCellEdit(order, 'discount')}>
+                              {editingDiscount ? (
+                                <div className="order-cell-editor">
+                                  <select
+                                    className="form-select form-select-sm order-compact-select"
+                                    value={draft.discountMode}
+                                    disabled={discountControlsDisabled}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => updateOrderDraft(rowKey, 'discountMode', e.target.value)}
                                   >
-                                    - Qty
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-outline-secondary"
-                                    onClick={() => handleAdjustQuantity(order, 1)}
-                                  >
-                                    + Qty
-                                  </button>
-                                </div>
-                                <div className="d-flex gap-1 align-items-center flex-wrap">
+                                    <option value="percent">%</option>
+                                    <option value="fixed">₹</option>
+                                  </select>
                                   <input
                                     type="number"
                                     min="0"
-                                    max="100"
                                     step="1"
-                                    className="form-control form-control-sm"
-                                    style={{ width: '90px' }}
-                                    placeholder="Discount %"
-                                    value={paymentInputs[rowKey]?.discount || ''}
-                                    onChange={(e) => setPaymentInput(rowKey, 'discount', e.target.value)}
+                                    className="form-control form-control-sm order-compact-input"
+                                    value={draft.discountValue}
+                                    disabled={discountControlsDisabled}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => updateOrderDraft(rowKey, 'discountValue', e.target.value.replace(/[^0-9.]/g, ''))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        commitDiscountDraft(order);
+                                      }
+                                      if (e.key === 'Escape') {
+                                        e.preventDefault();
+                                        closeCellEdit(order);
+                                      }
+                                    }}
+                                    autoFocus
                                   />
-                                  <button
-                                    className="btn btn-sm btn-outline-primary"
-                                    onClick={() => handleApplyOrderDiscount(order)}
-                                  >
-                                    Apply
-                                  </button>
+                                  <button type="button" className="toolbar-button compact" onClick={(e) => { e.stopPropagation(); commitDiscountDraft(order); }}>Save</button>
+                                  <button type="button" className="toolbar-button compact" onClick={(e) => { e.stopPropagation(); closeCellEdit(order); }}>Cancel</button>
                                 </div>
-                                {displayRemaining > 0 && order.status !== 'cancelled' && (
-                                  <div className="d-flex gap-1 align-items-center flex-wrap">
+                              ) : (
+                                <button type="button" className="order-edit-display" disabled={discountControlsDisabled}>
+                                  {Number(order.discount_amount || 0).toFixed(2)} ({Number(order.discount_percentage || 0).toFixed(0)}%)
+                                </button>
+                              )}
+                            </td>
+                          )}
+                          {adminView && <td>{formatINR(Number(order.payable_amount ?? (order.total_cost || 0)))}</td>}
+                          <td>{formatINR(Number(order.total_cost || 0))}</td>
+                          <td><span className={getStatusChipClass(order.status)}>{order.status || 'N/A'}</span></td>
+                          {adminView && <td><span className={getStatusChipClass(orderPaymentStatus)}>{orderPaymentStatus}</span></td>}
+                            {adminView && <td>{formatINR(displayPaid)}</td>}
+                            {adminView && <td>{formatINR(displayRemaining)}</td>}
+                            {adminView && (
+                              <td className={`order-editable-cell ${editingPayment ? 'is-editing' : ''}`} onClick={() => !paymentControlsDisabled && startCellEdit(order, 'payment')}>
+                                {editingPayment ? (
+                                  <div className="order-cell-editor">
                                     <input
                                       type="number"
                                       min="0"
                                       step="0.01"
-                                      className="form-control form-control-sm"
-                                      style={{ width: '90px' }}
-                                      placeholder="Paid"
-                                      value={paymentInputs[rowKey]?.amount || ''}
-                                      onChange={(e) => setPaymentInput(rowKey, 'amount', e.target.value)}
+                                      className="form-control form-control-sm order-compact-input"
+                                      placeholder="₹ Paid"
+                                      value={draft.paymentAmount}
+                                      disabled={paymentControlsDisabled}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => updateOrderDraft(rowKey, 'paymentAmount', e.target.value.replace(/[^0-9.]/g, ''))}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          commitPaymentDraft(order);
+                                        }
+                                        if (e.key === 'Escape') {
+                                          e.preventDefault();
+                                          closeCellEdit(order);
+                                        }
+                                      }}
+                                      autoFocus
                                     />
                                     <select
-                                      className="form-select form-select-sm"
-                                      style={{ width: '110px' }}
-                                      value={paymentInputs[rowKey]?.mode || 'cash'}
-                                      onChange={(e) => setPaymentInput(rowKey, 'mode', e.target.value)}
+                                      className="form-select form-select-sm order-compact-select"
+                                      value={draft.paymentMode}
+                                      disabled={paymentControlsDisabled}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => updateOrderDraft(rowKey, 'paymentMode', e.target.value)}
                                     >
                                       <option value="cash">Cash</option>
                                       <option value="wallet">Wallet</option>
                                       <option value="upi">UPI</option>
                                       <option value="card">Card</option>
                                     </select>
-                                    <button
-                                      className="btn btn-sm btn-primary"
-                                      onClick={() => handleCollectPayment(order)}
-                                    >
-                                      Record
-                                    </button>
+                                    <button type="button" className="toolbar-button primary compact" onClick={(e) => { e.stopPropagation(); commitPaymentDraft(order); }}>Save</button>
+                                    <button type="button" className="toolbar-button compact" onClick={(e) => { e.stopPropagation(); closeCellEdit(order); }}>Cancel</button>
                                   </div>
+                                ) : (
+                                  <button type="button" className="order-edit-display" disabled={paymentControlsDisabled}>
+                                    {order.payment_mode || (displayRemaining > 0 ? 'unpaid' : 'N/A')}
+                                  </button>
                                 )}
-                                <div className="d-flex gap-1 flex-wrap">
+                              </td>
+                            )}
+                            {adminView && <td>{getHandledByName(order)}</td>}
+                          <td>
+                            <div className="order-action-stack">
+                              <div className="order-action-row">
+                                <button type="button" className="toolbar-button secondary compact" onClick={() => handleGenerateInvoice(order)}>Invoice</button>
+                                <button type="button" className="toolbar-button secondary compact" onClick={() => handleDownloadInvoice(order)}>PDF</button>
+                                <button type="button" className="toolbar-button secondary compact" disabled={!roleCapabilities.canViewHistory} onClick={() => fetchOrderActionHistory(order)}>History</button>
+                                {roleCapabilities.canCancel && (
                                   <button
-                                    className="btn btn-sm btn-outline-secondary"
-                                    onClick={() => handleGenerateInvoice(order)}
+                                    type="button"
+                                    className="toolbar-button outline-danger compact"
+                                    onClick={async () => {
+                                      if (!window.confirm('Cancel Product?')) return;
+                                      await handleCancelOrder(order);
+                                    }}
                                   >
-                                    Invoice
+                                    Cancel Product
                                   </button>
-                                  <button
-                                    className="btn btn-sm btn-outline-success"
-                                    onClick={() => handleDownloadInvoice(order)}
-                                  >
-                                    PDF
-                                  </button>
-                                  <button
-                                    className="btn btn-sm btn-outline-info"
-                                    onClick={() => fetchOrderActionHistory(order)}
-                                  >
-                                    History
-                                  </button>
-                                </div>
-                                {orderActions[rowKey]?.length > 0 && (
-                                  <div className="border rounded p-2 bg-light" style={{ maxHeight: '180px', overflowY: 'auto' }}>
-                                    <div className="fw-bold mb-1">Recent actions</div>
-                                    {orderActions[rowKey].slice(0, 4).map((action) => (
-                                      <div key={action.action_id} className="small mb-1">
-                                        <div><strong>{action.action_type}</strong> by {action.action_by_user_name || action.action_by_user_id || 'Unknown'}</div>
+                                )}
+                              </div>
+                              {adminView && (
+                                <div className="order-history-panel">
+                                  <div className="order-manage-label">Timeline</div>
+                                  <div className="order-history-list">
+                                    {(orderActions[rowKey] || []).slice(0, 6).map((action) => (
+                                      <div key={action.action_id} className="order-history-item">
+                                        <div className="order-history-top">
+                                          <strong>{action.action_type}</strong>
+                                          <span>{new Date(action.created_at).toLocaleString()}</span>
+                                        </div>
                                         <div>{action.action_note || action.action_metadata || ''}</div>
-                                        <div className="text-muted">{new Date(action.created_at).toLocaleString()}</div>
+                                        <div className="text-muted">{getDisplayName(action.action_by_user_name)}</div>
                                       </div>
                                     ))}
+                                    {(orderActions[rowKey] || []).length === 0 && <div className="text-muted small">No timeline entries yet.</div>}
                                   </div>
-                                )}
-                              </div>
-                            </td>
-                          )}
-                          {!adminView && (
-                            <td>
-                              <div className="d-flex flex-wrap gap-2 align-items-center">
-                                <button
-                                  className="btn btn-sm btn-outline-secondary"
-                                  onClick={() => handleGenerateInvoice(order)}
-                                >
-                                  Invoice
-                                </button>
-                                <button
-                                  className="btn btn-sm btn-outline-success"
-                                  onClick={() => handleDownloadInvoice(order)}
-                                >
-                                  PDF
-                                </button>
-                                {order.status === 'cancelled' ? (
-                                  <button
-                                    className="btn btn-sm btn-primary"
-                                    onClick={() => handleReorderOrder(order)}
-                                  >
-                                    Reorder
-                                  </button>
-                                ) : (
-                                  <button
-                                    className="btn btn-sm btn-danger"
-                                    onClick={() => handleCancelOrder(order)}
-                                  >
-                                    Cancel
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1003,8 +1467,9 @@ const Orders = ({ onNavigate, userRole }) => {
             </tbody>
           </table>
         </div>
+        </>
       )}
-    </div>
+    </PageContainer>
   );
 };
 
